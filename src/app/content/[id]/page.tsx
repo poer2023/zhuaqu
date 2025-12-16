@@ -201,17 +201,16 @@ export default function ContentDetailPage({
                 }
                 const filename = `${item.authorHandle}_${item.sourceId}_${i + 1}.${ext}`
 
-                // Build proxy URL
-                const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+                // Build proxy URL with cache-busting
+                const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}&t=${Date.now()}`
 
-                // Use simple anchor link - this should trigger browser download with Content-Disposition
-                const link = document.createElement("a")
-                link.href = proxyUrl
-                link.setAttribute("download", filename)
-                link.style.display = "none"
-                document.body.appendChild(link)
-                link.click()
-                document.body.removeChild(link)
+                // Trigger download via a hidden iframe so the browser honors Content-Disposition filename
+                // without navigating away from the current page.
+                const iframe = document.createElement("iframe")
+                iframe.style.display = "none"
+                iframe.src = proxyUrl
+                document.body.appendChild(iframe)
+                setTimeout(() => iframe.remove(), 5 * 60_000)
 
                 // Small delay between downloads
                 if (i < item.media.length - 1) {
@@ -224,6 +223,7 @@ export default function ContentDetailPage({
             setDownloading(false)
         }
     }
+
 
     // Determine workflow status
     const captureReady = item?.captureStatus?.toUpperCase() === "READY"

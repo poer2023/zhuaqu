@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
                 "Content-Type": contentType,
                 "Content-Disposition": `attachment; filename="${finalFilename}"; filename*=UTF-8''${encodedFilename}`,
                 "Content-Length": String(data.byteLength),
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-store",
             },
         })
     } catch (error) {
