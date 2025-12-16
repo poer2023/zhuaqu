@@ -40,30 +40,6 @@ const en = {
         audit: "Audit",
     },
 
-    // Dashboard
-    dashboard: {
-        title: "Dashboard",
-        welcomeBack: "Welcome back",
-        stats: {
-            inPool: "In Pool",
-            pendingRewrite: "Pending Rewrite",
-            published: "Published",
-            thisWeek: "This Week",
-        },
-        quickActions: {
-            title: "Quick Actions",
-            ingestNew: "Ingest New",
-            ingestDesc: "Batch import from URLs",
-            startRewrite: "Start Rewrite",
-            rewriteDesc: "AI-assisted rewriting",
-            publishQueue: "Publish Queue",
-            publishDesc: "Manage publish jobs",
-        },
-        recentActivity: {
-            title: "Recent Activity",
-            viewAll: "View all activity",
-        },
-    },
 
     // Ingest page
     ingest: {

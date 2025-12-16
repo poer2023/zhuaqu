@@ -40,30 +40,6 @@ const zh = {
         audit: "审计",
     },
 
-    // 仪表盘
-    dashboard: {
-        title: "仪表盘",
-        welcomeBack: "欢迎回来",
-        stats: {
-            inPool: "素材池中",
-            pendingRewrite: "待改写",
-            published: "已发布",
-            thisWeek: "本周新增",
-        },
-        quickActions: {
-            title: "快捷操作",
-            ingestNew: "入库新内容",
-            ingestDesc: "从 URL 批量导入",
-            startRewrite: "开始改写",
-            rewriteDesc: "AI 辅助改写",
-            publishQueue: "发布队列",
-            publishDesc: "管理发布任务",
-        },
-        recentActivity: {
-            title: "最近活动",
-            viewAll: "查看全部活动",
-        },
-    },
 
     // 入库页
     ingest: {
