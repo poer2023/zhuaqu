@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+:root {
+  /* 亮色模式：极简白灰 */
+  --background: #ffffff;
+  --foreground: #09090b;
+  /* zinc-950 */
+  --background-subtle: #fafafa;
+  /* zinc-50 */
+
+  /* 主色调：极端黑白 */
+  --primary: #18181b;
+  /* zinc-900 */
+  --primary-foreground: #fafafa;
+  /* zinc-50 */
+
+  /* 次要色 */
+  --secondary: #f4f4f5;
+  /* zinc-100 */
+  --secondary-foreground: #18181b;
+  /* zinc-900 */
+
+  /* 柔和色 */
+  --muted: #f4f4f5;
+  /* zinc-100 */
+  --muted-foreground: #71717a;
+  /* zinc-500 - 降低对比度 */
+
+  /* 强调色 */
+  --accent: #f4f4f5;
+  /* zinc-100 */
+  --accent-foreground: #18181b;
+  /* zinc-900 */
+
+  /* 破坏性操作 */
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
+  /* 边框与输入框 - 极细极淡 */
+  --border: #e4e4e7;
+  /* zinc-200 */
+  --input: #e4e4e7;
+  /* zinc-200 */
+  --ring: #18181b;
+  /* zinc-900 */
+
+  /* 卡片 - 纯净无背景或极淡 */
+  --card: #ffffff;
+  --card-foreground: #09090b;
+
+  /* 浮层 */
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-background-subtle: var(--background-subtle);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* 深色模式：深邃蓝灰 */
+    --background: #09090b;
+    /* zinc-950 */
+    --foreground: #fafafa;
+    /* zinc-50 */
+    --background-subtle: #18181b;
+    /* zinc-900 */
+
+    --primary: #fafafa;
+    /* zinc-50 */
+    --primary-foreground: #09090b;
+    /* zinc-950 */
+
+    --secondary: #27272a;
+    /* zinc-800 */
+    --secondary-foreground: #fafafa;
+
+    --muted: #27272a;
+    /* zinc-800 */
+    --muted-foreground: #a1a1aa;
+    /* zinc-400 */
+
+    --accent: #27272a;
+    /* zinc-800 */
+    --accent-foreground: #fafafa;
+
+    --destructive: #7f1d1d;
+    --destructive-foreground: #fafafa;
+
+    --border: #27272a;
+    /* zinc-800 */
+    --input: #27272a;
+    /* zinc-800 */
+    --ring: #d4d4d8;
+    /* zinc-300 */
+
+    --card: #09090b;
+    /* zinc-950 */
+    --card-foreground: #fafafa;
+
+    --popover: #09090b;
+    --popover-foreground: #fafafa;
+  }
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 现代极简滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* 实用工具类 */
+.glass {
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* 隐藏输入框 type=number 的箭头 */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

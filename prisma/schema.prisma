@@ -1,0 +1,623 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== 核心枚举 ====================
+
+enum CaptureStatus {
+  QUEUED
+  FETCHING
+  READY
+  FAILED
+}
+
+enum RewriteStatus {
+  NONE
+  DRAFTING
+  GENERATED
+  APPROVED
+  REWORK
+  REJECTED
+}
+
+enum PublishStatus {
+  NOT_PUBLISHED
+  QUEUED
+  PUBLISHED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  PARTIAL_FAILED
+}
+
+// ==================== 统一编排任务 (v2) ====================
+
+enum OrchestratorJobType {
+  INGEST_URL
+  SYNC_LIKES
+  SYNC_BOOKMARKS
+  SYNC_TIMELINE
+  REWRITE
+  PUBLISH
+  PIPELINE
+}
+
+enum OrchestratorJobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  FAILED
+  DONE
+  CANCELED
+}
+
+enum OrchestratorStepType {
+  CAPTURE
+  EXTRACT
+  MEDIA
+  REWRITE
+  QA
+  SCHEDULE
+  PUBLISH
+}
+
+enum OrchestratorStepStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum AuditAction {
+  INGEST_CREATED
+  INGEST_COMPLETED
+  INGEST_FAILED
+  REWRITE_CREATED
+  REWRITE_GENERATED
+  REWRITE_APPROVED
+  REWRITE_REJECTED
+  REWRITE_REWORK
+  PUBLISH_QUEUED
+  PUBLISH_SUCCEEDED
+  PUBLISH_FAILED
+  ITEM_MOVED
+  ITEM_DELETED
+  ITEM_TAGGED
+}
+
+// ==================== 工作区与素材池 ====================
+
+model Workspace {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  defaultPoolId   String?
+  settings        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 关联
+  pools           Pool[]
+  jobs            Job[]
+  contentItems    ContentItem[]
+  tags            Tag[]
+  rewritePresets  RewritePreset[]
+  publishJobs     PublishJob[]
+  ingestJobs      IngestJob[]
+  rewriteBatches  RewriteBatch[]
+  auditLogs       AuditLog[]
+  xAccount        XAccount?
+  syncJobs        SyncJob[]
+
+  @@map("workspaces")
+}
+
+model Pool {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  name         String
+  description  String?
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobs         Job[]
+  contentItems ContentItem[]
+  ingestJobs   IngestJob[]
+  syncJobs     SyncJob[]
+
+  @@index([workspaceId])
+  @@map("pools")
+}
+
+// ==================== 统一 Job/Step 编排 ====================
+
+model Job {
+  id              String                @id @default(cuid())
+  type            OrchestratorJobType
+  status          OrchestratorJobStatus @default(PENDING)
+  workspaceId     String
+  poolId          String?
+  config          Json                  @default("{}")
+  traceId         String?               @unique
+  idempotencyKey  String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pool            Pool?                 @relation(fields: [poolId], references: [id], onDelete: SetNull)
+  steps           Step[]
+  contentItems    ContentItem[]
+  ingestJob       IngestJob?
+  syncJob         SyncJob?
+  publishJob      PublishJob?
+  rewriteBatch    RewriteBatch?
+  rewriteVersions RewriteVersion[]
+
+  @@index([workspaceId])
+  @@index([poolId])
+  @@index([type])
+  @@index([status])
+  @@unique([type, idempotencyKey])
+  @@map("jobs")
+}
+
+model Step {
+  id           String                  @id @default(cuid())
+  jobId        String
+  type         OrchestratorStepType
+  position     Int                     @default(0)
+  status       OrchestratorStepStatus  @default(QUEUED)
+  attemptCount Int                     @default(0)
+  maxAttempts  Int                     @default(3)
+  availableAt  DateTime                @default(now())
+  inputRef     Json                    @default("{}")
+  outputRef    Json                    @default("{}")
+  error        Json                    @default("{}")
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  job          Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  rewriteVersions RewriteVersion[]
+
+  @@index([jobId])
+  @@index([jobId, position])
+  @@index([status, availableAt])
+  @@index([type, status, availableAt])
+  @@map("steps")
+}
+
+// ==================== 内容条目 ====================
+
+model ContentItem {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  poolId          String
+  jobId           String?
+  
+  // 来源信息
+  sourceId        String        // tweet_id
+  sourceUrl       String
+  authorHandle    String
+  authorName      String?
+  authorAvatar    String?
+  
+  // 原始内容
+  textOriginal    String        @db.Text
+  lang            String?
+  rawJson         Json
+  
+  // 媒体（图片、视频链接数组）
+  media           Json          @default("[]")
+  
+  // 线程信息
+  threadId        String?       // 如果是线程的一部分
+  threadPosition  Int?          // 在线程中的位置
+  
+  // 状态
+  captureStatus   CaptureStatus @default(QUEUED)
+  rewriteStatus   RewriteStatus @default(NONE)
+  publishStatus   PublishStatus @default(NOT_PUBLISHED)
+  
+  // 管理
+  notes           String?       @db.Text
+  isArchived      Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // 关联
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pool            Pool          @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  job             Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  tags            ContentItemTag[]
+  rewriteVersions RewriteVersion[]
+  publishResults  PublishResult[]
+  auditLogs       AuditLog[]
+
+  @@unique([workspaceId, sourceId])
+  @@index([workspaceId])
+  @@index([poolId])
+  @@index([jobId])
+  @@index([captureStatus])
+  @@index([rewriteStatus])
+  @@index([publishStatus])
+  @@index([authorHandle])
+  @@map("content_items")
+}
+
+// ==================== 标签系统 ====================
+
+model Tag {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String?  // hex color
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItems ContentItemTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("tags")
+}
+
+model ContentItemTag {
+  id            String   @id @default(cuid())
+  contentItemId String
+  tagId         String
+  createdAt     DateTime @default(now())
+
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contentItemId, tagId])
+  @@map("content_item_tags")
+}
+
+// ==================== 入库任务 ====================
+
+model IngestJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  poolId      String
+  jobId       String?   @unique
+  
+  // 输入
+  urls        Json      // string[]
+  options     Json      @default("{}")  // thread_mode, quote_mode, media_mode
+  tags        Json      @default("[]")  // tag ids to apply
+  notes       String?
+  
+  // 状态
+  status      JobStatus @default(QUEUED)
+  
+  // 进度
+  total       Int       @default(0)
+  succeeded   Int       @default(0)
+  failed      Int       @default(0)
+  deduped     Int       @default(0)
+  
+  // 结果
+  failures    Json      @default("[]")  // [{url, error, code}]
+  
+  // 时间
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pool        Pool      @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([jobId])
+  @@index([status])
+  @@map("ingest_jobs")
+}
+
+// ==================== 改写系统 ====================
+
+model RewritePreset {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  name         String
+  description  String?
+  
+  // 改写参数
+  targetPersona   String?  // 目标账号定位
+  audienceTone    String?  // 受众与语气
+  stance          String?  // 观点立场：agree/disagree/neutral/compare/supplement
+  outputFormat    String   @default("single") // single/thread
+  includeHook     Boolean  @default(true)
+  includeConclusion Boolean @default(true)
+  includeCTA      Boolean  @default(false)
+  requireFactCheck Boolean @default(true)
+  includeSource   Boolean  @default(false)
+  language        String   @default("zh")
+  
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rewriteBatches RewriteBatch[]
+
+  @@index([workspaceId])
+  @@map("rewrite_presets")
+}
+
+model RewriteBatch {
+  id          String    @id @default(cuid())
+  workspaceId String
+  presetId    String?
+  jobId       String?   @unique
+  name        String
+  
+  // 参数快照
+  params      Json      @default("{}")
+  
+  // 状态
+  status      JobStatus @default(QUEUED)
+  
+  // 进度
+  total       Int       @default(0)
+  succeeded   Int       @default(0)
+  failed      Int       @default(0)
+  
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  preset      RewritePreset? @relation(fields: [presetId], references: [id])
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  versions    RewriteVersion[]
+
+  @@index([workspaceId])
+  @@index([jobId])
+  @@index([status])
+  @@map("rewrite_batches")
+}
+
+model RewriteVersion {
+  id            String        @id @default(cuid())
+  contentItemId String
+  batchId       String?
+  jobId         String?
+  stepId        String?
+  
+  // 版本号
+  version       Int           @default(1)
+  
+  // 改写内容
+  output        Json          // 单条: {text} / 线程: [{text, position}]
+  outputFormat  String        @default("single")
+  
+  // 参数快照
+  paramsSnapshot Json         @default("{}")
+  
+  // 状态
+  status        RewriteStatus @default(GENERATED)
+  
+  // 校验信息
+  charCount     Int?
+  similarityScore Float?      // 与原文相似度
+  warnings      Json          @default("[]")  // 校验警告
+  
+  // 审阅
+  reviewedAt    DateTime?
+  reviewNotes   String?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  contentItem   ContentItem   @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  batch         RewriteBatch? @relation(fields: [batchId], references: [id])
+  job           Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  step          Step?         @relation(fields: [stepId], references: [id], onDelete: SetNull)
+  publishJobs   PublishJob[]
+
+  @@index([contentItemId])
+  @@index([batchId])
+  @@index([jobId])
+  @@index([stepId])
+  @@index([status])
+  @@map("rewrite_versions")
+}
+
+// ==================== 发布系统 ====================
+
+model XAccount {
+  id            String   @id @default(cuid())
+  workspaceId   String   @unique
+  
+  // X 账号信息
+  xUserId       String
+  xUsername     String
+  xDisplayName  String?
+  xAvatar       String?
+  
+  // 凭证（加密存储）
+  accessToken   String
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  
+  // 状态
+  isActive      Boolean  @default(true)
+  lastUsedAt    DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publishJobs   PublishJob[]
+
+  @@map("x_accounts")
+}
+
+model PublishJob {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  xAccountId    String
+  rewriteVersionId String
+  jobId         String?       @unique
+  
+  // 发布模式
+  mode          String        @default("single") // single/thread
+  
+  // 定时
+  scheduledAt   DateTime?
+  
+  // 状态
+  status        PublishStatus @default(QUEUED)
+  
+  // 重试
+  retryCount    Int           @default(0)
+  maxRetries    Int           @default(3)
+  lastError     String?
+  
+  // 结果
+  resultMap     Json          @default("{}") // {position: tweet_id/url}
+  
+  // 时间
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount      XAccount      @relation(fields: [xAccountId], references: [id])
+  rewriteVersion RewriteVersion @relation(fields: [rewriteVersionId], references: [id])
+  job           Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  publishResults PublishResult[]
+
+  @@index([workspaceId])
+  @@index([jobId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("publish_jobs")
+}
+
+model PublishResult {
+  id              String   @id @default(cuid())
+  publishJobId    String
+  contentItemId   String
+  
+  // 发布结果
+  tweetId         String
+  tweetUrl        String
+  position        Int      @default(0)  // 线程中的位置
+  
+  // 回执
+  responseJson    Json     @default("{}")
+  
+  publishedAt     DateTime @default(now())
+
+  publishJob      PublishJob  @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+  contentItem     ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([publishJobId])
+  @@index([contentItemId])
+  @@map("publish_results")
+}
+
+// ==================== 审计日志 ====================
+
+model AuditLog {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  contentItemId String?
+  
+  // 操作
+  action        AuditAction
+  
+  // 详情
+  details       Json        @default("{}")
+  
+  // 操作者（未来可扩展为用户ID）
+  actor         String      @default("system")
+  
+  createdAt     DateTime    @default(now())
+
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem? @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([contentItemId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==================== 同步任务 (v1.2) ====================
+
+enum SyncJobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SyncSource {
+  LIKES
+  BOOKMARKS
+  TIMELINE
+}
+
+model SyncJob {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  poolId        String
+  source        SyncSource
+  jobId         String?       @unique
+  status        SyncJobStatus @default(PENDING)
+  
+  // 配置选项
+  options       Json          @default("{}")  // { limit, mediaOnly, excludeAuthors[], includeReplies }
+  
+  // 进度跟踪
+  progress      Json          @default("{}")  // { discovered, submitted, ingested, failed, deduped }
+  lastCursor    String?                       // 断点续跑游标
+  
+  // 结果
+  totalItems    Int           @default(0)
+  successCount  Int           @default(0)
+  failCount     Int           @default(0)
+  dedupedCount  Int           @default(0)
+  
+  error         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pool          Pool          @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  job           Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([jobId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("sync_jobs")
+}
