@@ -1,13 +1,15 @@
 {
   "name": "zhaqu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "npx tsx tests/orchestrator.test.ts",
     "worker": "npx tsx scripts/worker.ts",
+    "watchdog": "npx tsx src/server/orchestrator/watchdog.ts",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:migrate": "npx prisma migrate dev",
     "db:push": "npx prisma db push",

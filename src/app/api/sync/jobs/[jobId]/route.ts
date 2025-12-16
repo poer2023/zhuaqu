@@ -33,15 +33,17 @@ async function updateOrchestrationForSyncJob(args: {
     switch (action) {
         case 'start':
         case 'resume':
-            await setJob('RUNNING')
+            // 控制面只负责把任务恢复到可领取状态，RUNNING 由 worker claimNextStep 设置
+            await setJob('PENDING')
             await tx.step.updateMany({
-                where: { jobId: orchestrationJobId, type: 'CAPTURE', status: { in: ['QUEUED', 'FAILED'] } },
+                where: { jobId: orchestrationJobId, type: 'CAPTURE' },
                 data: {
-                    status: 'RUNNING',
-                    startedAt: now,
+                    status: 'QUEUED',
                     availableAt: now,
+                    startedAt: null,
+                    completedAt: null,
                     error: {},
-                    attemptCount: { increment: 1 },
+                    outputRef: {},
                 }
             })
             return
@@ -147,8 +149,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
                     return NextResponse.json({ error: 'Job cannot be started' }, { status: 400 })
                 }
                 updateData = {
-                    status: 'RUNNING' as SyncJobStatusType,
-                    startedAt: job.startedAt || new Date()
+                    status: 'PENDING' as SyncJobStatusType,
                 }
                 break
 
@@ -163,7 +164,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
                 if (job.status !== 'PAUSED') {
                     return NextResponse.json({ error: 'Only paused jobs can be resumed' }, { status: 400 })
                 }
-                updateData = { status: 'RUNNING' as SyncJobStatusType }
+                updateData = { status: 'PENDING' as SyncJobStatusType }
                 break
 
             case 'cancel':

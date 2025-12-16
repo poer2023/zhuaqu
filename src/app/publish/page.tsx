@@ -1,30 +1,23 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PageShell } from "@/components/layout/PageShell"
 import {
-    Send,
     Pause,
     Play,
     CalendarDays,
     Loader2,
     RefreshCw,
-    X,
-    Chrome
+    X
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { usePublishStore } from "@/stores/publishStore"
-import { useTranslations } from "@/stores/localeStore"
 
 export default function PublishPage() {
-    const { t } = useTranslations()
-    const [isPublishing, setIsPublishing] = useState(false)
-    const [publishResult, setPublishResult] = useState<{ success: boolean; message: string } | null>(null)
-
     // Zustand stores
     const { currentWorkspaceId, fetchWorkspaces } = useWorkspaceStore()
     const {
@@ -63,35 +56,6 @@ export default function PublishPage() {
             : 0
     }
 
-    // 使用浏览器发布队列中的第一条
-    const handleBrowserPublish = async (jobId: string, text: string) => {
-        setIsPublishing(true)
-        setPublishResult(null)
-
-        try {
-            const res = await fetch("/api/publish/browser", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "post", text }),
-            })
-            const data = await res.json()
-
-            if (data.success) {
-                setPublishResult({ success: true, message: "发布成功！" })
-                // 刷新任务列表
-                if (currentWorkspaceId) {
-                    fetchJobs(currentWorkspaceId)
-                }
-            } else {
-                setPublishResult({ success: false, message: data.error || "发布失败" })
-            }
-        } catch (error) {
-            setPublishResult({ success: false, message: "发布请求失败" })
-        } finally {
-            setIsPublishing(false)
-        }
-    }
-
     return (
         <PageShell
             title="Publish Center"
@@ -101,15 +65,25 @@ export default function PublishPage() {
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => queuePaused ? resumeQueue() : pauseQueue()}
+                        onClick={() => {
+                            if (!currentWorkspaceId) return
+                            if (queuePaused) resumeQueue(currentWorkspaceId)
+                            else pauseQueue(currentWorkspaceId)
+                        }}
                         className={cn("h-8 text-xs", queuePaused && "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:border-amber-900/50 dark:text-amber-400")}
                     >
                         {queuePaused ? <Play className="h-3 w-3 mr-1.5" strokeWidth={1.5} /> : <Pause className="h-3 w-3 mr-1.5" strokeWidth={1.5} />}
                         {queuePaused ? "Resume" : "Pause"}
                     </Button>
-                    <Button size="sm" className="h-8 px-3 text-xs">
-                        <Send className="h-3 w-3 mr-1.5" strokeWidth={1.5} />
-                        Post
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => currentWorkspaceId && fetchJobs(currentWorkspaceId)}
+                        disabled={!currentWorkspaceId || isLoading}
+                    >
+                        <RefreshCw className={cn("h-3 w-3 mr-1.5", isLoading && "animate-spin")} strokeWidth={1.5} />
+                        Refresh
                     </Button>
                 </div>
             }
@@ -149,20 +123,7 @@ export default function PublishPage() {
                                                             {job.mode}
                                                         </Badge>
                                                     </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-6 text-[10px] px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                                            onClick={() => handleBrowserPublish(job.id, (job.rewriteVersion?.output as { text: string })?.text || "")}
-                                                            disabled={isPublishing}
-                                                        >
-                                                            {isPublishing ? (
-                                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                                            ) : (
-                                                                <><Chrome className="h-3 w-3 mr-1" strokeWidth={1.5} /> Post</>
-                                                            )}
-                                                        </Button>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"

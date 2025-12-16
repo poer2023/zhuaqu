@@ -62,8 +62,8 @@ interface PublishState {
     deleteJob: (jobId: string) => Promise<void>
 
     // 队列控制
-    pauseQueue: () => void
-    resumeQueue: () => void
+    pauseQueue: (workspaceId: string) => Promise<void>
+    resumeQueue: (workspaceId: string) => Promise<void>
 }
 
 export const usePublishStore = create<PublishState>()((set, get) => ({
@@ -78,11 +78,21 @@ export const usePublishStore = create<PublishState>()((set, get) => ({
     fetchJobs: async (workspaceId: string) => {
         set({ isLoading: true, error: null })
         try {
-            const response = await fetch(`/api/publish/jobs?workspaceId=${workspaceId}`)
-            if (!response.ok) throw new Error('Failed to fetch publish jobs')
+            const [jobsRes, queueRes] = await Promise.all([
+                fetch(`/api/publish/jobs?workspaceId=${workspaceId}`),
+                fetch(`/api/publish/queue?workspaceId=${workspaceId}`),
+            ])
 
-            const data = await response.json()
-            set({ jobs: data.jobs, isLoading: false })
+            if (!jobsRes.ok) throw new Error('Failed to fetch publish jobs')
+            const jobsData = await jobsRes.json()
+
+            const queueData = queueRes.ok ? await queueRes.json().catch(() => null) : null
+
+            set({
+                jobs: jobsData.jobs,
+                queuePaused: Boolean(queueData?.paused),
+                isLoading: false,
+            })
         } catch (error) {
             set({ error: String(error), isLoading: false })
         }
@@ -175,12 +185,32 @@ export const usePublishStore = create<PublishState>()((set, get) => ({
         }
     },
 
-    // 队列控制
-    pauseQueue: () => {
-        set({ queuePaused: true })
+    // 队列控制（持久化到 workspace.settings，并暂停/恢复 PUBLISH 编排任务）
+    pauseQueue: async (workspaceId: string) => {
+        try {
+            const response = await fetch('/api/publish/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId, action: 'pause' }),
+            })
+            if (!response.ok) throw new Error('Failed to pause queue')
+            set({ queuePaused: true })
+        } catch (error) {
+            set({ error: String(error) })
+        }
     },
 
-    resumeQueue: () => {
-        set({ queuePaused: false })
+    resumeQueue: async (workspaceId: string) => {
+        try {
+            const response = await fetch('/api/publish/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId, action: 'resume' }),
+            })
+            if (!response.ok) throw new Error('Failed to resume queue')
+            set({ queuePaused: false })
+        } catch (error) {
+            set({ error: String(error) })
+        }
     },
 }))

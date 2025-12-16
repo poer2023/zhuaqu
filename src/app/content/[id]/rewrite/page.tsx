@@ -48,6 +48,10 @@ interface ContentItem {
     }>
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null
+}
+
 export default function RewritePage({
     params
 }: {
@@ -95,8 +99,79 @@ export default function RewritePage({
     const handleGenerate = async () => {
         setIsGenerating(true)
         try {
-            // TODO: Call rewrite API
-            await new Promise(r => setTimeout(r, 2000))
+            const toneMap: Record<string, string> = {
+                professional: "专业但易懂",
+                casual: "轻松口语",
+                humorous: "幽默风趣",
+                formal: "正式严谨",
+            }
+
+            const params = {
+                language: "zh",
+                audienceTone: toneMap[tone] || toneMap.professional,
+                stance: "neutral",
+                outputFormat: "single",
+            }
+
+            const response = await fetch("/api/rewrite/stream", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contentItemId: id, params, force: true }),
+            })
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}))
+                throw new Error(err.error || "Rewrite stream failed")
+            }
+            if (!response.body) throw new Error("No response body")
+
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let fullText = ""
+
+            setEditedText("")
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+
+                while (true) {
+                    const idx = buffer.indexOf("\n\n")
+                    if (idx === -1) break
+
+                    const frame = buffer.slice(0, idx)
+                    buffer = buffer.slice(idx + 2)
+
+                    for (const line of frame.split("\n")) {
+                        if (!line.startsWith("data: ")) continue
+                        const raw = line.slice(6)
+                        let data: unknown
+                        try {
+                            data = JSON.parse(raw)
+                        } catch {
+                            continue
+                        }
+
+                        if (isRecord(data) && typeof data.content === "string") {
+                            fullText += data.content
+                            setEditedText(fullText)
+                        }
+
+                        if (isRecord(data) && data.error) {
+                            throw new Error(String((data as Record<string, unknown>).error))
+                        }
+
+                        if (isRecord(data) && data.done) {
+                            buffer = ""
+                            break
+                        }
+                    }
+                }
+            }
+
             await fetchItem()
         } finally {
             setIsGenerating(false)
@@ -105,10 +180,20 @@ export default function RewritePage({
 
     const handleApprove = async () => {
         try {
-            await fetch(`/api/content-items/${id}`, {
+            if (!selectedVersionId) return
+
+            if (editedText.trim()) {
+                await fetch(`/api/rewrite/versions/${selectedVersionId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "edit", output: { text: editedText } }),
+                })
+            }
+
+            await fetch(`/api/rewrite/versions/${selectedVersionId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rewriteStatus: "APPROVED" }),
+                body: JSON.stringify({ action: "approve" }),
             })
             router.push(`/content/${id}`)
         } catch (error) {
@@ -118,10 +203,11 @@ export default function RewritePage({
 
     const handleReject = async () => {
         try {
-            await fetch(`/api/content-items/${id}`, {
+            if (!selectedVersionId) return
+            await fetch(`/api/rewrite/versions/${selectedVersionId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ rewriteStatus: "NONE" }),
+                body: JSON.stringify({ action: "reject" }),
             })
             router.push(`/content/${id}`)
         } catch (error) {

@@ -22,6 +22,10 @@ export async function GET(
                     orderBy: { version: "desc" },
                     take: 10,
                 },
+                publishResults: {
+                    orderBy: { publishedAt: "desc" },
+                    take: 20,
+                },
                 auditLogs: {
                     orderBy: { createdAt: "desc" },
                     take: 20,

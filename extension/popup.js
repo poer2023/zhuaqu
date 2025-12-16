@@ -36,7 +36,7 @@ async function checkConnection() {
         } else {
             throw new Error('Not connected');
         }
-    } catch (e) {
+    } catch (_e) {
         statusIndicator.classList.add('disconnected');
         statusIndicator.classList.remove('connected');
         connectionStatus.classList.add('disconnected');

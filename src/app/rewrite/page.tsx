@@ -1,16 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { Progress } from "@/components/ui/progress"
 import { PageShell } from "@/components/layout/PageShell"
 import {
     CheckCircle2,
@@ -20,12 +14,111 @@ import {
     ThumbsDown,
     Wand2,
     Layers,
-    Loader2
+    Loader2,
+    XCircle,
+    Play,
+    Pause,
+    RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useRewriteStore } from "@/stores/rewriteStore"
 import { useTranslations } from "@/stores/localeStore"
+
+// ==================== Types ====================
+
+type BatchProgress = {
+    total: number
+    succeeded: number
+    failed: number
+    pending: number
+}
+
+type JobStep = {
+    id: string
+    status: string
+    outputRef?: { total?: number; succeeded?: number; failed?: number }
+}
+
+// ==================== Progress Panel ====================
+
+function BatchProgressPanel({
+    batch,
+    onRefresh,
+    onRetry,
+    onCancel,
+    isLoading,
+}: {
+    batch: { id: string; name: string; status: string; succeeded: number; failed: number; total: number }
+    onRefresh: () => void
+    onRetry: () => void
+    onCancel: () => void
+    isLoading: boolean
+}) {
+    const progress = batch.total > 0 ? Math.round(((batch.succeeded + batch.failed) / batch.total) * 100) : 0
+    const isRunning = batch.status === "RUNNING" || batch.status === "QUEUED"
+
+    return (
+        <div className="p-4 border-b bg-muted/10">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{batch.name}</span>
+                    <Badge
+                        variant="outline"
+                        className={cn(
+                            "text-[9px]",
+                            batch.status === "DONE" && "text-green-600 border-green-200 bg-green-50",
+                            batch.status === "PARTIAL_FAILED" && "text-red-600 border-red-200 bg-red-50",
+                            isRunning && "text-blue-600 border-blue-200 bg-blue-50"
+                        )}
+                    >
+                        {isRunning && <Loader2 className="h-2 w-2 mr-1 animate-spin" />}
+                        {batch.status.toLowerCase()}
+                    </Badge>
+                </div>
+                <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onRefresh} disabled={isLoading}>
+                        <RefreshCw className="h-3 w-3" />
+                    </Button>
+                    {batch.status === "PARTIAL_FAILED" && (
+                        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={onRetry} disabled={isLoading}>
+                            <RotateCw className="h-3 w-3 mr-1" />
+                            重试
+                        </Button>
+                    )}
+                    {isRunning && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs text-red-600"
+                            onClick={onCancel}
+                            disabled={isLoading}
+                        >
+                            <XCircle className="h-3 w-3 mr-1" />
+                            取消
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <Progress value={progress} className="h-1.5" />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>
+                        {batch.succeeded + batch.failed} / {batch.total}
+                    </span>
+                    <span className="flex items-center gap-2">
+                        <span className="text-green-600">✓ {batch.succeeded}</span>
+                        <span className="text-red-600">✕ {batch.failed}</span>
+                        <span>◎ {batch.total - batch.succeeded - batch.failed}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ==================== Main Page ====================
 
 export default function RewritePage() {
     const { t } = useTranslations()
@@ -84,6 +177,44 @@ export default function RewritePage() {
         await getBatch(batchId)
     }
 
+    const handleBatchRefresh = async () => {
+        if (currentBatch) {
+            await getBatch(currentBatch.id)
+        }
+    }
+
+    const handleBatchRetry = async () => {
+        if (!currentBatch) return
+        try {
+            await fetch(`/api/steps/batch-retry`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filter: { status: "FAILED", jobType: "REWRITE" },
+                }),
+            })
+            await handleBatchRefresh()
+        } catch {
+            // ignore
+        }
+    }
+
+    const handleBatchCancel = async () => {
+        if (!currentBatch) return
+        // Find the job by querying the API
+        try {
+            const res = await fetch(`/api/rewrite/batches/${currentBatch.id}`)
+            if (!res.ok) return
+            const data = await res.json()
+            const jobId = data.batch?.jobId
+            if (!jobId) return
+            await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" })
+            await handleBatchRefresh()
+        } catch {
+            // ignore
+        }
+    }
+
     const goTo = (index: number) => {
         if (index >= 0 && index < totalVersions) {
             // 保存当前编辑
@@ -123,7 +254,7 @@ export default function RewritePage() {
             currentVersion.contentItem.textOriginal,
             { language: 'zh' },
             (text) => setCurrentEditedText(text),
-            { workspaceId: currentWorkspaceId ?? undefined, contentItemId: currentVersion.contentItem.id }
+            { workspaceId: currentWorkspaceId ?? undefined, contentItemId: currentVersion.contentItem.id, force: true }
         )
     }
 
@@ -168,7 +299,15 @@ export default function RewritePage() {
                                 >
                                     <div className="font-medium text-sm truncate">{batch.name}</div>
                                     <div className="flex justify-between mt-1 items-center">
-                                        <Badge variant="secondary" className="text-[9px] h-4 font-normal px-1.5">
+                                        <Badge
+                                            variant="secondary"
+                                            className={cn(
+                                                "text-[9px] h-4 font-normal px-1.5",
+                                                batch.status === "RUNNING" && "bg-blue-100 text-blue-700",
+                                                batch.status === "PARTIAL_FAILED" && "bg-red-100 text-red-700"
+                                            )}
+                                        >
+                                            {batch.status === "RUNNING" && <Loader2 className="h-2 w-2 mr-0.5 animate-spin" />}
                                             {batch.status.toLowerCase()}
                                         </Badge>
                                         <span className="text-[10px] text-muted-foreground/70">
@@ -192,6 +331,15 @@ export default function RewritePage() {
                         </div>
                     ) : (
                         <>
+                            {/* Progress Panel */}
+                            <BatchProgressPanel
+                                batch={currentBatch}
+                                onRefresh={handleBatchRefresh}
+                                onRetry={handleBatchRetry}
+                                onCancel={handleBatchCancel}
+                                isLoading={isLoading}
+                            />
+
                             {/* Toolbar */}
                             <div className="h-10 border-b px-3 flex items-center justify-between shrink-0 bg-background/80 backdrop-blur-sm z-10">
                                 <div className="flex items-center gap-3">

@@ -165,21 +165,22 @@ export default function ContentDetailPage({
     const captureReady = item?.captureStatus?.toUpperCase() === "READY"
     const rewriteApproved = item?.rewriteStatus?.toUpperCase() === "APPROVED"
     const published = item?.publishStatus?.toUpperCase() === "PUBLISHED"
-    const rewriteNeedsReview = item?.rewriteStatus?.toUpperCase() === "NEEDS_REVIEW"
+    const rewriteNeedsReview = item?.rewriteStatus?.toUpperCase() === "GENERATED"
 
     // Primary action based on status
     const getPrimaryAction = () => {
         if (!item) return null
 
         const captureFailed = item.captureStatus?.toUpperCase() === "FAILED"
-        const rewriteFailed = item.rewriteStatus?.toUpperCase() === "FAILED"
         const publishFailed = item.publishStatus?.toUpperCase() === "FAILED"
 
-        if (captureFailed || rewriteFailed || publishFailed) {
+        if (captureFailed || publishFailed) {
             return (
-                <Button variant="destructive" size="sm">
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    重试
+                <Button variant="destructive" size="sm" asChild>
+                    <Link href="/jobs">
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        查看失败任务
+                    </Link>
                 </Button>
             )
         }
@@ -195,24 +196,23 @@ export default function ContentDetailPage({
             )
         }
 
-        if (rewriteNeedsReview) {
-            return (
-                <div className="flex gap-2">
-                    <Button variant="outline" size="sm">驳回</Button>
-                    <Button size="sm">
-                        <Check className="h-4 w-4 mr-2" />
-                        通过
-                    </Button>
-                </div>
-            )
-        }
-
         if (rewriteApproved && !published) {
             return (
                 <Button asChild size="sm">
                     <Link href={`/content/${id}/publish`}>
                         <Send className="h-4 w-4 mr-2" />
                         发布
+                    </Link>
+                </Button>
+            )
+        }
+
+        if (rewriteNeedsReview) {
+            return (
+                <Button asChild size="sm" variant="secondary">
+                    <Link href={`/content/${id}/rewrite`}>
+                        <PenTool className="h-4 w-4 mr-2" />
+                        审核改写
                     </Link>
                 </Button>
             )

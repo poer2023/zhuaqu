@@ -217,7 +217,7 @@
             } else {
                 throw new Error('Failed');
             }
-        } catch (e) {
+        } catch (_e) {
             btn.disabled = false;
             btn.innerHTML = `${ICONS.plus} Save`;
             showStatus('Failed to save', 'error');
@@ -480,7 +480,7 @@
             } else {
                 showStatus('Sync failed', 'error');
             }
-        } catch (e) {
+        } catch (_e) {
             showStatus('Sync failed: Network error', 'error');
         }
     }
@@ -512,7 +512,7 @@
                 const error = await res.json();
                 showStatus(error.error || 'Failed to create sync job', 'error');
             }
-        } catch (e) {
+        } catch (_e) {
             showStatus('Failed to create sync job', 'error');
         }
     }

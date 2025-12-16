@@ -1,20 +1,13 @@
 "use client"
 
 import { useEffect, useState, useCallback, use } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { PageShell } from "@/components/layout/PageShell"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import {
     Popover,
@@ -29,36 +22,38 @@ import {
     History,
     Loader2,
     CheckCircle2,
-    XCircle,
     AlertTriangle,
     FileText,
     Twitter,
-    Globe,
 } from "lucide-react"
 import { format } from "date-fns"
-import { cn } from "@/lib/utils"
-import { useTranslations } from "@/stores/localeStore"
 
 interface ContentItem {
+    workspaceId: string
     id: string
     sourceUrl: string
     authorHandle: string
     textOriginal: string
     rewriteStatus: string
     publishStatus: string
-    publishHistory?: Array<{
+    publishResults?: Array<{
         id: string
-        platform: string
-        status: string
-        publishedAt?: string
-        error?: string
+        tweetId: string
+        tweetUrl: string
+        position: number
+        publishedAt: string
     }>
     rewriteVersions?: Array<{
         id: string
         version: number
         status: string
-        output: { text: string }
+        output: unknown
+        outputFormat?: string
     }>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null
 }
 
 export default function PublishPage({
@@ -67,14 +62,11 @@ export default function PublishPage({
     params: Promise<{ id: string }>
 }) {
     const { id } = use(params)
-    const { t } = useTranslations()
-    const router = useRouter()
     const searchParams = useSearchParams()
 
     const [item, setItem] = useState<ContentItem | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isPublishing, setIsPublishing] = useState(false)
-    const [platform, setPlatform] = useState<string>("twitter")
     const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined)
     const [scheduleTime, setScheduleTime] = useState<string>("12:00")
 
@@ -83,7 +75,7 @@ export default function PublishPage({
     const fetchItem = useCallback(async () => {
         setIsLoading(true)
         try {
-            const res = await fetch(`/api/content-items/${id}?include=rewriteVersions,publishHistory`)
+            const res = await fetch(`/api/content-items/${id}`)
             if (res.ok) {
                 const data = await res.json()
                 setItem(data.item)
@@ -102,13 +94,18 @@ export default function PublishPage({
     const handlePublishNow = async () => {
         setIsPublishing(true)
         try {
+            if (!item) return
+            const approved = item.rewriteVersions?.find(v => v.status === "APPROVED")
+            if (!approved) return
+
+            const mode = Array.isArray(approved.output) || approved.outputFormat === "thread" ? "thread" : "single"
             await fetch(`/api/publish/jobs`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contentItemId: id,
-                    platform,
-                    publishAt: new Date().toISOString(),
+                    workspaceId: item.workspaceId,
+                    rewriteVersionIds: [approved.id],
+                    mode,
                 }),
             })
             await fetchItem()
@@ -125,13 +122,19 @@ export default function PublishPage({
             const publishAt = new Date(scheduleDate)
             publishAt.setHours(parseInt(hours), parseInt(minutes))
 
+            if (!item) return
+            const approved = item.rewriteVersions?.find(v => v.status === "APPROVED")
+            if (!approved) return
+            const mode = Array.isArray(approved.output) || approved.outputFormat === "thread" ? "thread" : "single"
+
             await fetch(`/api/publish/jobs`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contentItemId: id,
-                    platform,
-                    publishAt: publishAt.toISOString(),
+                    workspaceId: item.workspaceId,
+                    rewriteVersionIds: [approved.id],
+                    mode,
+                    scheduledAt: publishAt.toISOString(),
                 }),
             })
             await fetchItem()
@@ -142,7 +145,17 @@ export default function PublishPage({
 
     // Get approved rewrite text
     const approvedVersion = item?.rewriteVersions?.find(v => v.status === "APPROVED")
-    const publishText = approvedVersion?.output?.text || item?.textOriginal || ""
+    const publishText = (() => {
+        const output = approvedVersion?.output
+        if (Array.isArray(output)) {
+            return output
+                .map((o) => (isRecord(o) && typeof o.text === "string" ? o.text : ""))
+                .filter(Boolean)
+                .join("\n\n")
+        }
+        if (isRecord(output) && typeof output.text === "string") return output.text
+        return item?.textOriginal || ""
+    })()
 
     const isApproved = item?.rewriteStatus?.toUpperCase() === "APPROVED"
 
@@ -247,32 +260,6 @@ export default function PublishPage({
 
                     {/* Right: Settings & History */}
                     <div className="space-y-4">
-                        {/* Platform Selection */}
-                        <div className="rounded-lg border bg-card p-4 space-y-4">
-                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                发布渠道
-                            </Label>
-                            <Select value={platform} onValueChange={setPlatform}>
-                                <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="twitter">
-                                        <div className="flex items-center gap-2">
-                                            <Twitter className="h-4 w-4" />
-                                            Twitter / X
-                                        </div>
-                                    </SelectItem>
-                                    <SelectItem value="weibo">
-                                        <div className="flex items-center gap-2">
-                                            <Globe className="h-4 w-4" />
-                                            微博
-                                        </div>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
                         {/* Schedule */}
                         <div className="rounded-lg border bg-card p-4 space-y-4">
                             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -322,39 +309,29 @@ export default function PublishPage({
                                 </Label>
                             </div>
                             <div className="divide-y max-h-[200px] overflow-y-auto">
-                                {item.publishHistory?.length ? (
-                                    item.publishHistory.map((record) => (
-                                        <div key={record.id} className="px-4 py-3">
+                                {item.publishResults?.length ? (
+                                    item.publishResults.map((r) => (
+                                        <div key={r.id} className="px-4 py-3">
                                             <div className="flex items-center justify-between mb-1">
                                                 <div className="flex items-center gap-2">
-                                                    {record.platform === "twitter" && <Twitter className="h-3.5 w-3.5" />}
-                                                    {record.platform === "weibo" && <Globe className="h-3.5 w-3.5" />}
-                                                    <span className="text-xs font-medium">{record.platform}</span>
+                                                    <Twitter className="h-3.5 w-3.5" />
+                                                    <a
+                                                        href={r.tweetUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs font-medium hover:underline"
+                                                    >
+                                                        View tweet #{r.position + 1}
+                                                    </a>
                                                 </div>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={cn(
-                                                        "text-[9px]",
-                                                        record.status === "PUBLISHED" && "bg-green-50 text-green-600 border-green-200",
-                                                        record.status === "FAILED" && "bg-red-50 text-red-600 border-red-200",
-                                                        record.status === "SCHEDULED" && "bg-purple-50 text-purple-600 border-purple-200"
-                                                    )}
-                                                >
-                                                    {record.status === "PUBLISHED" && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
-                                                    {record.status === "FAILED" && <XCircle className="h-2.5 w-2.5 mr-0.5" />}
-                                                    {record.status}
+                                                <Badge variant="outline" className="text-[9px] bg-green-50 text-green-600 border-green-200">
+                                                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                                                    PUBLISHED
                                                 </Badge>
                                             </div>
-                                            {record.publishedAt && (
-                                                <div className="text-[10px] text-muted-foreground">
-                                                    {format(new Date(record.publishedAt), "yyyy-MM-dd HH:mm")}
-                                                </div>
-                                            )}
-                                            {record.error && (
-                                                <div className="text-[10px] text-red-500 mt-1">
-                                                    {record.error}
-                                                </div>
-                                            )}
+                                            <div className="text-[10px] text-muted-foreground">
+                                                {format(new Date(r.publishedAt), "yyyy-MM-dd HH:mm")}
+                                            </div>
                                         </div>
                                     ))
                                 ) : (

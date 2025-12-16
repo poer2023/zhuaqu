@@ -1,3 +1,7 @@
+// Next.js 16+ proxy.ts 约定
+// 取代已弃用的 middleware.ts
+// See: https://nextjs.org/docs/messages/middleware-to-proxy
+
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -11,7 +15,7 @@ const redirects: Record<string, string> = {
     '/audit': '/content?activity=open',
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     const pathname = request.nextUrl.pathname
 
     // 检查是否需要重定向

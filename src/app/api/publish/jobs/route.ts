@@ -1,6 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { createJobWithSteps } from "@/server/orchestrator"
+import { getLoggedInUser } from "@/server/publish/xPublisher"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsonValue = any
+
+async function ensureBrowserXAccount(workspaceId: string): Promise<{ id: string; xUsername: string; xDisplayName: string | null }> {
+    // 查找默认账号或第一个活跃账号
+    const existing = await prisma.xAccount.findFirst({
+        where: { workspaceId, isActive: true },
+        orderBy: [{ isDefault: 'desc' }, { lastUsedAt: 'desc' }]
+    })
+    if (existing) return { id: existing.id, xUsername: existing.xUsername, xDisplayName: existing.xDisplayName ?? null }
+
+    const user = await getLoggedInUser()
+    if (!user.isLoggedIn || !user.username) {
+        throw new Error("No browser session connected (Settings → Integrations)")
+    }
+
+    const created = await prisma.xAccount.create({
+        data: {
+            workspaceId,
+            xUserId: user.username,
+            xUsername: user.username,
+            xDisplayName: user.displayName ?? null,
+            xAvatar: null,
+            accessToken: "browser_session",
+            refreshToken: null,
+            tokenExpiry: null,
+            isActive: true,
+            lastUsedAt: new Date(),
+        },
+        select: { id: true, xUsername: true, xDisplayName: true },
+    })
+    return { id: created.id, xUsername: created.xUsername, xDisplayName: created.xDisplayName ?? null }
+}
 
 // GET /api/publish/jobs - 获取发布任务列表
 export async function GET(request: NextRequest) {
@@ -63,17 +97,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // 获取 X 账号
-        const xAccount = await prisma.xAccount.findUnique({
-            where: { workspaceId }
-        })
-
-        if (!xAccount) {
-            return NextResponse.json(
-                { error: "No X account connected to this workspace" },
-                { status: 400 }
-            )
-        }
+        const xAccount = await ensureBrowserXAccount(workspaceId)
 
         // 验证改写版本必须是 APPROVED 状态
         const versions = await prisma.rewriteVersion.findMany({
@@ -95,71 +119,61 @@ export async function POST(request: NextRequest) {
 
         // 创建发布任务
         const scheduledAtDate = scheduledAt ? new Date(scheduledAt) : null
+        const scheduledKey = scheduledAtDate ? scheduledAtDate.toISOString() : "immediate"
+        const resolvedMode = mode === "thread" ? "thread" : "single"
 
         const jobs = await Promise.all(
             versions.map(async (version) => {
-                return prisma.$transaction(async (tx) => {
-                    const existing = await tx.publishJob.findFirst({
-                        where: {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                return prisma.$transaction(async (tx: any) => {
+                    const idempotencyKey = `publish:${version.id}:${xAccount.id}:${scheduledKey}`
+
+                    const { job: orchestrationJob } = await createJobWithSteps(
+                        {
+                            type: "PUBLISH",
                             workspaceId,
-                            xAccountId: xAccount.id,
-                            rewriteVersionId: version.id,
-                            scheduledAt: scheduledAtDate,
-                        }
-                    })
-
-                    const ensureOrchestration = async (publishJobId: string) => {
-                        const { job: orchestrationJob } = await createJobWithSteps(
-                            {
-                                type: "PUBLISH",
-                                workspaceId,
-                                poolId: version.contentItem.poolId,
-                                config: {
-                                    publishJobId,
-                                    rewriteVersionId: version.id,
-                                    xAccountId: xAccount.id,
-                                    mode: mode || "single",
-                                    scheduledAt: scheduledAtDate?.toISOString() ?? null,
+                            poolId: version.contentItem.poolId,
+                            idempotencyKey,
+                            config: {
+                                rewriteVersionId: version.id,
+                                xAccountId: xAccount.id,
+                                mode: resolvedMode,
+                                scheduledAt: scheduledAtDate?.toISOString() ?? null,
+                            } as JsonValue,
+                            steps: [
+                                {
+                                    type: "PUBLISH",
+                                    maxAttempts: resolvedMode === "thread" ? 1 : 3,
+                                    inputRef: { rewriteVersionId: version.id } as JsonValue,
+                                    availableAt: scheduledAtDate ?? new Date(),
                                 },
-                                steps: [
-                                    {
-                                        type: "PUBLISH",
-                                        maxAttempts: 3,
-                                        inputRef: { publishJobId },
-                                        availableAt: scheduledAtDate ?? new Date(),
-                                    },
-                                ],
-                            },
-                            tx
-                        )
+                            ],
+                        },
+                        tx
+                    )
 
-                        await tx.publishJob.update({
-                            where: { id: publishJobId },
-                            data: { jobId: orchestrationJob.id },
+                    const existing = await tx.publishJob.findUnique({ where: { jobId: orchestrationJob.id } })
+                    const publishJob = existing
+                        ? existing
+                        : await tx.publishJob.create({
+                            data: {
+                                workspaceId,
+                                xAccountId: xAccount.id,
+                                rewriteVersionId: version.id,
+                                mode: resolvedMode,
+                                scheduledAt: scheduledAtDate,
+                                status: "QUEUED",
+                                jobId: orchestrationJob.id,
+                            }
                         })
 
-                        return orchestrationJob.id
-                    }
-
-                    if (existing) {
-                        if (!existing.jobId) {
-                            await ensureOrchestration(existing.id)
-                        }
-                        return (await tx.publishJob.findUnique({ where: { id: existing.id } })) ?? existing
-                    }
-
-                    const publishJob = await tx.publishJob.create({
+                    await tx.step.updateMany({
+                        where: { jobId: orchestrationJob.id, type: "PUBLISH" },
                         data: {
-                            workspaceId,
-                            xAccountId: xAccount.id,
-                            rewriteVersionId: version.id,
-                            mode: mode || "single",
-                            scheduledAt: scheduledAtDate,
-                            status: "QUEUED",
+                            inputRef: { publishJobId: publishJob.id, rewriteVersionId: version.id } as JsonValue,
+                            availableAt: scheduledAtDate ?? new Date(),
                         }
                     })
-
-                    const orchestrationJobId = await ensureOrchestration(publishJob.id)
 
                     // 更新内容项状态
                     await tx.contentItem.update({
@@ -175,7 +189,7 @@ export async function POST(request: NextRequest) {
                             action: "PUBLISH_QUEUED",
                             details: {
                                 jobId: publishJob.id,
-                                orchestrationJobId,
+                                orchestrationJobId: orchestrationJob.id,
                                 mode,
                                 scheduledAt,
                             },

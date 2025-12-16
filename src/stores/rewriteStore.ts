@@ -76,7 +76,7 @@ interface RewriteState {
         originalText: string,
         params?: Record<string, unknown>,
         onChunk?: (text: string) => void,
-        meta?: { workspaceId?: string; contentItemId?: string }
+        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean }
     ) => Promise<string>
     clearStreamingText: () => void
 }
@@ -276,7 +276,7 @@ export const useRewriteStore = create<RewriteState>()((set, get) => ({
         originalText: string,
         params?: Record<string, unknown>,
         onChunk?: (text: string) => void,
-        meta?: { workspaceId?: string; contentItemId?: string }
+        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean }
     ) => {
         set({ isStreaming: true, streamingText: "", error: null })
 

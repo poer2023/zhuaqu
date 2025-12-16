@@ -32,6 +32,7 @@ enum PublishStatus {
   QUEUED
   PUBLISHED
   FAILED
+  UNKNOWN  // 发布结果未知，需人工确认
 }
 
 enum JobStatus {
@@ -118,7 +119,7 @@ model Workspace {
   ingestJobs      IngestJob[]
   rewriteBatches  RewriteBatch[]
   auditLogs       AuditLog[]
-  xAccount        XAccount?
+  xAccounts       XAccount[]   // 支持多账号
   syncJobs        SyncJob[]
 
   @@map("workspaces")
@@ -184,6 +185,15 @@ model Step {
   attemptCount Int                     @default(0)
   maxAttempts  Int                     @default(3)
   availableAt  DateTime                @default(now())
+  
+  // Lease/Heartbeat 机制
+  leaseOwner     String?               // worker 实例标识
+  leaseExpiresAt DateTime?             // 租约过期时间
+  heartbeatAt    DateTime?             // 最后心跳时间
+  
+  // Step 依赖
+  dependsOnStepId String?              // 依赖的前置 step
+  
   inputRef     Json                    @default("{}")
   outputRef    Json                    @default("{}")
   error        Json                    @default("{}")
@@ -192,14 +202,34 @@ model Step {
   createdAt    DateTime                @default(now())
   updatedAt    DateTime                @updatedAt
 
-  job          Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job             Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  dependsOnStep   Step?                @relation("StepDependency", fields: [dependsOnStepId], references: [id])
+  dependentSteps  Step[]               @relation("StepDependency")
   rewriteVersions RewriteVersion[]
+  events          StepEvent[]
 
   @@index([jobId])
   @@index([jobId, position])
   @@index([status, availableAt])
   @@index([type, status, availableAt])
+  @@index([status, leaseExpiresAt])    // watchdog 查询索引
+  @@index([dependsOnStepId])
   @@map("steps")
+}
+
+// Step 增量事件日志
+model StepEvent {
+  id        String   @id @default(cuid())
+  stepId    String
+  type      String   // "log" | "progress" | "output" | "error"
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  step      Step     @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([stepId, createdAt])
+  @@index([stepId, type])
+  @@map("step_events")
 }
 
 // ==================== 内容条目 ====================
@@ -292,6 +322,8 @@ model ContentItemTag {
 
 // ==================== 入库任务 ====================
 
+// @deprecated v1 表 - 仅作为业务视图使用，编排以 Job/Step 为准
+// 新代码应使用 Job/Step 模型，此表仅保留用于现有业务逻辑和向后兼容
 model IngestJob {
   id          String    @id @default(cuid())
   workspaceId String
@@ -363,6 +395,8 @@ model RewritePreset {
   @@map("rewrite_presets")
 }
 
+// @deprecated v1 表 - 仅作为业务视图使用，编排以 Job/Step 为准
+// 新代码应使用 Job/Step 模型，此表仅保留用于 RewriteVersion 关联和向后兼容
 model RewriteBatch {
   id          String    @id @default(cuid())
   workspaceId String
@@ -447,7 +481,7 @@ model RewriteVersion {
 
 model XAccount {
   id            String   @id @default(cuid())
-  workspaceId   String   @unique
+  workspaceId   String   // 移除 @unique，支持一个 workspace 多个 X 账号
   
   // X 账号信息
   xUserId       String
@@ -462,7 +496,9 @@ model XAccount {
   
   // 状态
   isActive      Boolean  @default(true)
+  isDefault     Boolean  @default(false)  // 标记默认账号
   lastUsedAt    DateTime?
+  lastError     String?                   // 最后一次错误信息
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -470,6 +506,9 @@ model XAccount {
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   publishJobs   PublishJob[]
 
+  @@unique([workspaceId, xUserId])  // 同一 workspace 下同一 X 账号唯一
+  @@index([workspaceId])
+  @@index([xUserId])
   @@map("x_accounts")
 }
 
@@ -488,6 +527,9 @@ model PublishJob {
   
   // 状态
   status        PublishStatus @default(QUEUED)
+  
+  // 幂等
+  idempotencyKey String?      // 幂等键，相同 key 不重复执行
   
   // 重试
   retryCount    Int           @default(0)
@@ -509,10 +551,12 @@ model PublishJob {
   job           Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
   publishResults PublishResult[]
 
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId])
   @@index([jobId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([idempotencyKey])
   @@map("publish_jobs")
 }
 
@@ -534,6 +578,7 @@ model PublishResult {
   publishJob      PublishJob  @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
   contentItem     ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
 
+  @@unique([contentItemId, tweetId])  // 去重键
   @@index([publishJobId])
   @@index([contentItemId])
   @@map("publish_results")
@@ -584,6 +629,8 @@ enum SyncSource {
   TIMELINE
 }
 
+// @deprecated v1 表 - 仅作为业务视图使用，编排以 Job/Step 为准
+// 新代码应使用 Job/Step 模型，此表仅保留用于 Sync 进度追踪和向后兼容
 model SyncJob {
   id            String        @id @default(cuid())
   workspaceId   String
