@@ -17,6 +17,7 @@ import { PageShell } from "@/components/layout/PageShell"
 import { Loader2, Check, ExternalLink, Chrome, Globe } from "lucide-react"
 import { useTranslations } from "@/stores/localeStore"
 import { locales, localeNames, type Locale } from "@/i18n"
+import { PoolsTagsSettings } from "@/components/settings/PoolsTagsSettings"
 
 interface BrowserSession {
     isLoggedIn: boolean
@@ -129,6 +130,10 @@ export default function SettingsPage() {
                             <div className="flex justify-end">
                                 <Button size="sm" className="h-8 text-xs">Save Changes</Button>
                             </div>
+                        </TabsContent>
+
+                        <TabsContent value="pools" className="space-y-6 m-0 focus:outline-none">
+                            <PoolsTagsSettings />
                         </TabsContent>
 
                         <TabsContent value="integrations" className="space-y-6 m-0 focus:outline-none">
