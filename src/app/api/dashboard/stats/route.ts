@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 
 // GET /api/dashboard/stats - 获取仪表盘统计数据
 export async function GET(request: NextRequest) {
