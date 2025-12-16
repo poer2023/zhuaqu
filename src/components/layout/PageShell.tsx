@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils"
 
 interface PageShellProps {
     children: React.ReactNode
-    title?: string
+    title?: React.ReactNode
     description?: React.ReactNode
     headerAction?: React.ReactNode
     className?: string
@@ -22,7 +22,7 @@ export function PageShell({
         return (
             <div className={cn("max-w-4xl mx-auto pt-12 pb-16 animate-fade-in px-4", className)}>
                 <div className="mb-10 text-center space-y-2">
-                    {title && <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>}
+                    {title && <div className="text-3xl font-semibold tracking-tight">{title}</div>}
                     {description && <div className="text-muted-foreground max-w-2xl mx-auto">{description}</div>}
                 </div>
                 {children}
@@ -37,7 +37,7 @@ export function PageShell({
                 {(title || headerAction) && (
                     <div className="flex items-center justify-between px-6 py-4 border-b shrink-0 bg-background/50 backdrop-blur-sm">
                         <div>
-                            {title && <h1 className="text-lg font-semibold tracking-tight">{title}</h1>}
+                            {title && <div className="text-lg font-semibold tracking-tight">{title}</div>}
                             {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
                         </div>
                         {headerAction && <div className="flex items-center gap-2">{headerAction}</div>}
@@ -56,7 +56,7 @@ export function PageShell({
             {(title || headerAction) && (
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b pb-5 mb-8 gap-4">
                     <div className="space-y-1">
-                        {title && <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>}
+                        {title && <div className="text-2xl font-semibold tracking-tight text-foreground">{title}</div>}
                         {description && <div className="text-sm text-muted-foreground">{description}</div>}
                     </div>
                     {headerAction && <div className="flex items-center gap-2 shrink-0">{headerAction}</div>}

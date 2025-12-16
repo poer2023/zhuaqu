@@ -9,19 +9,39 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Globe, Check } from "lucide-react"
 
-export function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+    collapsed?: boolean
+}
+
+export function LanguageSwitcher({ collapsed }: LanguageSwitcherProps) {
     const { locale, setLocale } = useTranslations()
+
+    const trigger = (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <Globe className="h-4 w-4" strokeWidth={1.5} />
+        </Button>
+    )
 
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <Globe className="h-4 w-4" strokeWidth={1.5} />
-                </Button>
+                {collapsed ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+                        <TooltipContent side="right">Language</TooltipContent>
+                    </Tooltip>
+                ) : (
+                    trigger
+                )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[120px]">
+            <DropdownMenuContent align={collapsed ? "center" : "end"} side={collapsed ? "right" : "bottom"} className="min-w-[120px]">
                 {locales.map((loc) => (
                     <DropdownMenuItem
                         key={loc}

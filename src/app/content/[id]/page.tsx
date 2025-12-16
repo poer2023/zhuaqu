@@ -28,6 +28,8 @@ import {
     Loader2,
     Plus,
     Check,
+    Copy,
+    Download,
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -117,6 +119,8 @@ export default function ContentDetailPage({
     const [notes, setNotes] = useState("")
     const [newTag, setNewTag] = useState("")
     const [isSaving, setIsSaving] = useState(false)
+    const [copied, setCopied] = useState(false)
+    const [downloading, setDownloading] = useState(false)
 
     // Get return URL from search params
     const returnUrl = searchParams.get("from") || "/content"
@@ -159,6 +163,66 @@ export default function ContentDetailPage({
         if (!newTag.trim() || !item) return
         // TODO: Implement add tag API
         setNewTag("")
+    }
+
+    const handleCopyText = async () => {
+        if (!item?.textOriginal) return
+        try {
+            await navigator.clipboard.writeText(item.textOriginal)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch (err) {
+            console.error("Failed to copy:", err)
+        }
+    }
+
+    const handleDownloadMedia = async () => {
+        if (!item?.media || item.media.length === 0) return
+        setDownloading(true)
+
+        try {
+            for (let i = 0; i < item.media.length; i++) {
+                const m = item.media[i]
+                const url = m.directUrl || m.sourceUrl
+                if (!url) continue
+
+                // Generate filename with proper extension from URL
+                let ext = "jpg"
+                if (m.type === "video") {
+                    ext = "mp4"
+                } else {
+                    try {
+                        const urlPath = new URL(url).pathname
+                        const urlExt = urlPath.split(".").pop()?.toLowerCase()
+                        if (urlExt === "png") ext = "png"
+                        else if (urlExt === "webp") ext = "webp"
+                        else if (urlExt === "gif") ext = "gif"
+                    } catch { }
+                }
+                const filename = `${item.authorHandle}_${item.sourceId}_${i + 1}.${ext}`
+
+                // Build proxy URL
+                const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+
+                // Use simple anchor link - this should trigger browser download with Content-Disposition
+                const link = document.createElement("a")
+                link.href = proxyUrl
+                link.setAttribute("download", filename)
+                link.style.display = "none"
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+
+                // Small delay between downloads
+                if (i < item.media.length - 1) {
+                    await new Promise(r => setTimeout(r, 1500))
+                }
+            }
+        } catch (error) {
+            console.error("Download error:", error)
+        } finally {
+            setDownloading(false)
+        }
     }
 
     // Determine workflow status
@@ -325,15 +389,35 @@ export default function ContentDetailPage({
                                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                     原文内容
                                 </Label>
-                                <a
-                                    href={item.sourceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                                >
-                                    <ExternalLink className="h-3 w-3" />
-                                    查看源
-                                </a>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={handleCopyText}
+                                    >
+                                        {copied ? (
+                                            <>
+                                                <Check className="h-3 w-3 mr-1 text-green-500" />
+                                                已复制
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Copy className="h-3 w-3 mr-1" />
+                                                复制文案
+                                            </>
+                                        )}
+                                    </Button>
+                                    <a
+                                        href={item.sourceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                                    >
+                                        <ExternalLink className="h-3 w-3" />
+                                        查看源
+                                    </a>
+                                </div>
                             </div>
                             <div className="text-sm leading-relaxed whitespace-pre-wrap">
                                 {item.textOriginal}
@@ -343,14 +427,30 @@ export default function ContentDetailPage({
                         {/* Media */}
                         {item.media && item.media.length > 0 && (
                             <div className="rounded-lg border bg-card p-5 space-y-3">
-                                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                                    {item.media[0]?.type === "video" ? (
-                                        <Video className="h-3 w-3" />
-                                    ) : (
-                                        <ImageIcon className="h-3 w-3" />
-                                    )}
-                                    媒体 ({item.media.length})
-                                </Label>
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                        {item.media[0]?.type === "video" ? (
+                                            <Video className="h-3 w-3" />
+                                        ) : (
+                                            <ImageIcon className="h-3 w-3" />
+                                        )}
+                                        媒体 ({item.media.length})
+                                    </Label>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={handleDownloadMedia}
+                                        disabled={downloading}
+                                    >
+                                        {downloading ? (
+                                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                        ) : (
+                                            <Download className="h-3 w-3 mr-1" />
+                                        )}
+                                        {item.media[0]?.type === "video" ? "下载视频" : "下载图片"}
+                                    </Button>
+                                </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     {item.media.map((m, i) => (
                                         <div
