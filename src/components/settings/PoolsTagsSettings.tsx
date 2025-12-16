@@ -51,7 +51,7 @@ export function PoolsTagsSettings() {
             }
             if (tagsRes.ok) {
                 const tagsData = await tagsRes.json()
-                setTags(tagsData || [])
+                setTags(tagsData.tags || [])
             }
         } catch (error) {
             console.error("Failed to fetch pools/tags:", error)
