@@ -49,7 +49,7 @@ services:
       - media_data:/app/data/media
       - playwright_cache:/root/.cache/ms-playwright
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${WEB_PORT:-3344}:3000"
     command: >
       sh -c "npx prisma migrate deploy && node server.js"
 

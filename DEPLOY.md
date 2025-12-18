@@ -1,6 +1,102 @@
 # Zhaqu Docker 部署指南
 
-## 快速开始
+## 部署方式
+
+| 方式 | 说明 |
+|------|------|
+| [手动部署](#手动部署) | 适合首次部署、学习理解 |
+| [CI/CD 自动部署](#cicd-自动部署-推荐) | 推代码自动部署，推荐生产环境使用 |
+
+---
+
+## CI/CD 自动部署 (推荐)
+
+推送代码到 `main` 分支即可自动部署到 VPS。
+
+### 1. 配置 GitHub Secrets
+
+在 GitHub 仓库 → Settings → Secrets and variables → Actions 添加：
+
+| Secret 名称 | 说明 |
+|-------------|------|
+| `VPS_HOST` | VPS IP 或域名 |
+| `VPS_USER` | SSH 用户名 |
+| `VPS_SSH_KEY` | SSH 私钥 |
+
+### 2. 首次部署 - 准备 VPS
+
+```bash
+# 安装 Docker
+curl -fsSL https://get.docker.com | sh
+
+# 创建项目目录
+mkdir -p ~/zhaqu
+
+# 创建环境变量文件
+cat > ~/zhaqu/.env << 'EOF'
+POSTGRES_USER=zhaqu
+POSTGRES_PASSWORD=your_secure_password
+POSTGRES_DB=zhaqu
+NEXTAUTH_URL=https://your-domain.com
+NEXTAUTH_SECRET=your-secret-key-at-least-32-chars
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+EOF
+```
+
+### 3. 推送代码触发部署
+
+```bash
+git add .
+git commit -m "feat: new feature"
+git push origin main
+```
+
+GitHub Actions 会自动：
+1. 构建 Docker 镜像
+2. 推送到 GitHub Container Registry
+3. SSH 到 VPS 拉取新镜像
+4. 重启服务并运行迁移
+
+### 4. 查看部署状态
+
+- GitHub → Actions 标签页查看构建日志
+- VPS 上执行 `docker compose logs -f` 查看运行日志
+
+---
+
+## Coolify 一键部署 (最简单)
+
+[Coolify](https://coolify.io/) 是自托管的 PaaS 平台，类似 Vercel 但部署在自己的服务器上。
+
+### 1. 安装 Coolify
+
+```bash
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+### 2. 访问面板
+
+打开 `http://your-vps-ip:8000`，完成初始化设置。
+
+### 3. 添加项目
+
+1. **添加 Git 仓库** → 连接你的 GitHub
+2. **新建项目** → 选择 Docker Compose
+3. **配置环境变量** → 填入数据库密码、API Key 等
+4. **部署** → 一键部署
+
+### 优势
+
+- ✅ 图形化界面，无需命令行
+- ✅ 自动 HTTPS (Let's Encrypt)
+- ✅ 推送代码自动部署
+- ✅ 一键回滚
+- ✅ 内置监控和日志
+
+---
+
+## 手动部署
 
 ### 1. 准备 VPS 环境
 

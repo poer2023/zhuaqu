@@ -1,0 +1,44 @@
+# 生产环境覆盖配置
+# 与 docker-compose.yml 配合使用
+# 使用方式: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  web:
+    # 使用 GitHub Container Registry 的镜像
+    image: ghcr.io/${GITHUB_REPOSITORY:-your-username/zhaqu}:latest
+    build: !reset null
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: ghcr.io/${GITHUB_REPOSITORY:-your-username/zhaqu}:latest
+    build: !reset null
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  watchdog:
+    image: ghcr.io/${GITHUB_REPOSITORY:-your-username/zhaqu}:latest
+    build: !reset null
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  postgres:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
