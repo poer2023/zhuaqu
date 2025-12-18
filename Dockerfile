@@ -1,19 +1,21 @@
 # ==================== 基础镜像 ====================
-FROM node:20-alpine AS base
+FROM node:20-bookworm-slim AS base
 WORKDIR /app
+
+# 安装必要系统依赖（openssl 给 Prisma 用）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # ==================== 依赖安装阶段 ====================
 FROM base AS deps
-
-# 安装构建依赖
-RUN apk add --no-cache libc6-compat
 
 # 复制包管理文件
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 
-# 安装依赖
-RUN npm install --legacy-peer-deps
+# 安装依赖（兼容 peer 依赖）
+RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps --force
 
 # ==================== 构建阶段 ====================
 FROM base AS builder
@@ -26,6 +28,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # 生成 Prisma Client
+RUN npx prisma generate --print
 RUN npx prisma generate
 
 # 构建 Next.js
@@ -39,13 +42,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # 创建非 root 用户
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nextjs
 
 # 复制构建产物
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
