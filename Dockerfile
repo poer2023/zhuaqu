@@ -7,14 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ==================== 依赖安装阶段 ====================
+# ==================== 依赖安装阶段（含开发依赖，供构建用） ====================
 FROM base AS deps
 
 # 复制包管理文件
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 
-# 安装依赖（兼容 peer 依赖）
+# 安装依赖（含 dev，用于构建）
 RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps --force
 
 # ==================== 构建阶段 ====================
@@ -37,6 +37,14 @@ RUN npx prisma generate
 # 构建 Next.js
 RUN npm run build
 
+# ==================== 生产依赖阶段（仅 prod 依赖，减小体积） ====================
+FROM base AS proddeps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+# 仅安装生产依赖
+RUN npm install --omit=dev --legacy-peer-deps || npm install --omit=dev --legacy-peer-deps --force
+
 # ==================== 生产镜像 ====================
 FROM base AS runner
 WORKDIR /app
@@ -52,12 +60,9 @@ RUN groupadd --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=proddeps /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 # 创建数据目录
 RUN mkdir -p /app/data/media && chown -R nextjs:nodejs /app
