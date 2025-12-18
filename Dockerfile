@@ -27,8 +27,11 @@ COPY --from=deps /app/node_modules ./node_modules
 # 复制源码
 COPY . .
 
+# 提供构建期可用的 DATABASE_URL，避免 prisma generate 报错
+ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+ENV DATABASE_URL=${DATABASE_URL}
+
 # 生成 Prisma Client
-RUN npx prisma generate --print
 RUN npx prisma generate
 
 # 构建 Next.js
