@@ -106,7 +106,7 @@ export default function RewritePage({
                 formal: "正式严谨",
             }
 
-            const params = {
+            const rewriteParams = {
                 language: "zh",
                 audienceTone: toneMap[tone] || toneMap.professional,
                 stance: "neutral",
@@ -116,7 +116,7 @@ export default function RewritePage({
             const response = await fetch("/api/rewrite/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contentItemId: id, params, force: true }),
+                body: JSON.stringify({ contentItemId: id, params: rewriteParams, force: true }),
             })
 
             if (!response.ok) {

@@ -158,9 +158,26 @@ export function ContentItemDrawer({ item, open, onClose, onUpdate }: ContentItem
     }
 
     const handleAddTag = async () => {
-        if (!newTag.trim()) return
-        // TODO: Call API to add tag
-        setNewTag("")
+        if (!newTag.trim() || !item) return
+        setIsUpdating(true)
+        try {
+            const res = await fetch(`/api/content-items/${item.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ addTagName: newTag.trim() }),
+            })
+            if (res.ok) {
+                const data = await res.json()
+                if (onUpdate && data.item) {
+                    onUpdate(data.item)
+                }
+                setNewTag("")
+            }
+        } catch (error) {
+            console.error("Failed to add tag:", error)
+        } finally {
+            setIsUpdating(false)
+        }
     }
 
     const handleCopy = async (text: string) => {
@@ -192,8 +209,19 @@ export function ContentItemDrawer({ item, open, onClose, onUpdate }: ContentItem
         if (!item) return
         setIsUpdating(true)
         try {
-            // TODO: Call API to update notes
-            await new Promise(r => setTimeout(r, 500))
+            const res = await fetch(`/api/content-items/${item.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ notes }),
+            })
+            if (res.ok) {
+                const data = await res.json()
+                if (onUpdate && data.item) {
+                    onUpdate(data.item)
+                }
+            }
+        } catch (error) {
+            console.error("Failed to save notes:", error)
         } finally {
             setIsUpdating(false)
         }

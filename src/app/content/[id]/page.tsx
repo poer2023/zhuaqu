@@ -161,8 +161,20 @@ export default function ContentDetailPage({
 
     const handleAddTag = async () => {
         if (!newTag.trim() || !item) return
-        // TODO: Implement add tag API
-        setNewTag("")
+        try {
+            const res = await fetch(`/api/content-items/${item.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ addTagName: newTag.trim() }),
+            })
+            if (res.ok) {
+                setNewTag("")
+                // 刷新数据以显示新标签
+                await fetchItem()
+            }
+        } catch (error) {
+            console.error("Failed to add tag:", error)
+        }
     }
 
     const handleCopyText = async () => {

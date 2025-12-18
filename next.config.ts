@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Docker 部署需要 standalone 模式
+  output: "standalone",
+  
   async headers() {
     return [
       {

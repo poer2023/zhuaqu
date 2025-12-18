@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -20,16 +21,31 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 import { PageShell } from "@/components/layout/PageShell"
 import { ContentItemDrawer } from "@/components/pools/ContentItemDrawer"
-import { Search, Filter, Plus, PenTool, Tag, Trash2, Loader2 } from "lucide-react"
+import { Search, Filter, Plus, PenTool, Tag, Trash2, Loader2, X, Check } from "lucide-react"
 import { format } from "date-fns"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { usePoolStore } from "@/stores/poolStore"
 import { useTranslations } from "@/stores/localeStore"
 
+interface TagItem {
+    id: string
+    name: string
+    color: string
+}
+
 export default function PoolsPage() {
     const { t } = useTranslations()
+    const router = useRouter()
     const [searchQuery, setSearchQuery] = useState("")
     const [selectedPoolFilter, setSelectedPoolFilter] = useState("all")
 
@@ -51,11 +67,35 @@ export default function PoolsPage() {
 
     // Drawer state - use items type
     const [drawerItem, setDrawerItem] = useState<(typeof items)[number] | null>(null)
+    
+    // Tag dialog state
+    const [showTagDialog, setShowTagDialog] = useState(false)
+    const [availableTags, setAvailableTags] = useState<TagItem[]>([])
+    const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+    const [newTagName, setNewTagName] = useState("")
+    const [isApplyingTags, setIsApplyingTags] = useState(false)
+    
+    // Batch rewrite state
+    const [isCreatingBatch, setIsCreatingBatch] = useState(false)
 
     // 加载工作区
     useEffect(() => {
         fetchWorkspaces()
     }, [fetchWorkspaces])
+    
+    // 加载标签
+    const loadTags = async () => {
+        if (!currentWorkspaceId) return
+        try {
+            const res = await fetch(`/api/tags?workspaceId=${currentWorkspaceId}`)
+            if (res.ok) {
+                const data = await res.json()
+                setAvailableTags(data.tags || [])
+            }
+        } catch (error) {
+            console.error("Failed to load tags:", error)
+        }
+    }
 
     // 加载素材池内容
     useEffect(() => {
@@ -91,6 +131,107 @@ export default function PoolsPage() {
             if (currentWorkspaceId) {
                 fetchItems(currentWorkspaceId)
             }
+        }
+    }
+    
+    // 打开标签对话框
+    const handleOpenTagDialog = async () => {
+        await loadTags()
+        setSelectedTagIds([])
+        setNewTagName("")
+        setShowTagDialog(true)
+    }
+    
+    // 创建新标签
+    const handleCreateTag = async () => {
+        if (!newTagName.trim() || !currentWorkspaceId) return
+        try {
+            const res = await fetch("/api/tags", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: currentWorkspaceId,
+                    name: newTagName.trim(),
+                    color: "#3b82f6",
+                }),
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setAvailableTags(prev => [...prev, data.tag])
+                setSelectedTagIds(prev => [...prev, data.tag.id])
+                setNewTagName("")
+            }
+        } catch (error) {
+            console.error("Failed to create tag:", error)
+        }
+    }
+    
+    // 批量应用标签
+    const handleApplyTags = async () => {
+        if (selectedItemIds.length === 0 || selectedTagIds.length === 0) return
+        setIsApplyingTags(true)
+        
+        try {
+            // 为每个选中的内容项添加标签
+            const results = await Promise.all(
+                selectedItemIds.map(async (itemId) => {
+                    const res = await fetch(`/api/content-items/${itemId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ addTagIds: selectedTagIds }),
+                    })
+                    return { itemId, ok: res.ok, status: res.status }
+                })
+            )
+            
+            const failed = results.filter(r => !r.ok)
+            if (failed.length > 0) {
+                console.error(`Failed to apply tags to ${failed.length} items:`, failed)
+                // 可以在这里添加用户通知，但至少确保部分成功的情况下刷新数据
+            }
+            
+            setShowTagDialog(false)
+            clearSelection()
+            if (currentWorkspaceId) {
+                fetchItems(currentWorkspaceId)
+            }
+        } catch (error) {
+            console.error("Failed to apply tags:", error)
+        } finally {
+            setIsApplyingTags(false)
+        }
+    }
+    
+    // 批量创建改写任务
+    const handleBatchRewrite = async () => {
+        if (selectedItemIds.length === 0 || !currentWorkspaceId) return
+        setIsCreatingBatch(true)
+        
+        try {
+            const res = await fetch("/api/rewrite/batches", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: currentWorkspaceId,
+                    itemIds: selectedItemIds,
+                    params: {
+                        language: "zh",
+                        audienceTone: "专业但易懂",
+                        stance: "neutral",
+                        outputFormat: "single",
+                    },
+                }),
+            })
+            
+            if (res.ok) {
+                clearSelection()
+                // 跳转到改写工作台
+                router.push("/rewrite")
+            }
+        } catch (error) {
+            console.error("Failed to create rewrite batch:", error)
+        } finally {
+            setIsCreatingBatch(false)
         }
     }
 
@@ -225,10 +366,25 @@ export default function PoolsPage() {
                         <span className="text-xs font-medium whitespace-nowrap">{selectedItemIds.length} selected</span>
                         <div className="h-3 w-px bg-border/50"></div>
                         <div className="flex items-center gap-0.5">
-                            <Button size="sm" variant="ghost" className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-xs font-medium px-2.5">
-                                <PenTool className="h-3 w-3 mr-1.5" strokeWidth={1.5} /> Rewrite
+                            <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-xs font-medium px-2.5"
+                                onClick={handleBatchRewrite}
+                                disabled={isCreatingBatch}
+                            >
+                                {isCreatingBatch ? (
+                                    <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Creating...</>
+                                ) : (
+                                    <><PenTool className="h-3 w-3 mr-1.5" strokeWidth={1.5} /> Rewrite</>
+                                )}
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full w-7 p-0">
+                            <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full w-7 p-0"
+                                onClick={handleOpenTagDialog}
+                            >
                                 <Tag className="h-3 w-3" strokeWidth={1.5} />
                             </Button>
                             <Button
@@ -243,6 +399,93 @@ export default function PoolsPage() {
                     </div>
                 </div>
             )}
+            
+            {/* Tag Selection Dialog */}
+            <Dialog open={showTagDialog} onOpenChange={setShowTagDialog}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Add Tags</DialogTitle>
+                        <DialogDescription>
+                            Select tags to add to {selectedItemIds.length} selected item(s)
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4">
+                        {/* Available Tags */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-muted-foreground">Select Tags</label>
+                            <div className="flex flex-wrap gap-2 p-3 rounded-lg border bg-muted/20 min-h-[80px]">
+                                {availableTags.length === 0 ? (
+                                    <span className="text-xs text-muted-foreground">No tags available. Create one below.</span>
+                                ) : (
+                                    availableTags.map((tag) => (
+                                        <Badge
+                                            key={tag.id}
+                                            variant={selectedTagIds.includes(tag.id) ? "default" : "outline"}
+                                            className="cursor-pointer transition-colors h-6"
+                                            style={{
+                                                backgroundColor: selectedTagIds.includes(tag.id) ? tag.color : undefined,
+                                                borderColor: tag.color,
+                                            }}
+                                            onClick={() => {
+                                                setSelectedTagIds(prev =>
+                                                    prev.includes(tag.id)
+                                                        ? prev.filter(id => id !== tag.id)
+                                                        : [...prev, tag.id]
+                                                )
+                                            }}
+                                        >
+                                            {selectedTagIds.includes(tag.id) && (
+                                                <Check className="h-3 w-3 mr-1" />
+                                            )}
+                                            {tag.name}
+                                        </Badge>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Create New Tag */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-muted-foreground">Create New Tag</label>
+                            <div className="flex gap-2">
+                                <Input
+                                    placeholder="Tag name..."
+                                    value={newTagName}
+                                    onChange={(e) => setNewTagName(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
+                                    className="flex-1 h-8 text-sm"
+                                />
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                    onClick={handleCreateTag}
+                                    disabled={!newTagName.trim()}
+                                >
+                                    <Plus className="h-3 w-3" />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowTagDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={handleApplyTags}
+                            disabled={selectedTagIds.length === 0 || isApplyingTags}
+                        >
+                            {isApplyingTags ? (
+                                <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Applying...</>
+                            ) : (
+                                <>Apply {selectedTagIds.length} Tag(s)</>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Detail Drawer */}
             <ContentItemDrawer

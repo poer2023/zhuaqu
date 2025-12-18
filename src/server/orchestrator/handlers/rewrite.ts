@@ -22,10 +22,85 @@ function asParams(value: unknown): RewriteParams {
   return value as RewriteParams
 }
 
+// 创建安全的 JSON 对象，确保可以被 Prisma/PostgreSQL 正确处理
+function sanitizeText(text: string): string {
+  if (!text) return text
+  
+  let cleaned = ''
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    
+    // 跳过控制字符（除了 tab, lf, cr）
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+      continue
+    }
+    
+    // 处理 Unicode 代理对
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = text.charCodeAt(i + 1)
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        // 有效的代理对
+        cleaned += text[i] + text[i + 1]
+        i++
+        continue
+      }
+      // 否则跳过孤立的高代理
+      continue
+    }
+    
+    // 跳过孤立的低代理
+    if (code >= 0xDC00 && code <= 0xDFFF) {
+      continue
+    }
+    
+    cleaned += text[i]
+  }
+  // 移除可能导致 JSON 解析失败的转义序列（如不完整的 \x?? 或 \u???）
+  cleaned = cleaned.replace(/\\x[0-9a-fA-F]?/g, '')
+  cleaned = cleaned.replace(/\\u[0-9a-fA-F]{0,3}(?![0-9a-fA-F])/g, '')
+
+  return cleaned
+}
+
+function createSafeJsonObject(obj: Record<string, unknown>): Prisma.InputJsonValue {
+  // 预清理字符串字段
+  const normalized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      normalized[key] = sanitizeText(value)
+    } else if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      value === null
+    ) {
+      normalized[key] = value
+    } else {
+      normalized[key] = value
+    }
+  }
+
+  // 通过 JSON 序列化/反序列化来"清洗"对象，确保可存储
+  try {
+    return JSON.parse(JSON.stringify(normalized)) as Prisma.InputJsonValue
+  } catch (e) {
+    // 若仍失败，返回字符串化后的安全文本
+    const fallback: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(normalized)) {
+      if (typeof value === 'string') fallback[key] = sanitizeText(value)
+      else if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+        fallback[key] = value
+      }
+    }
+    return fallback as Prisma.InputJsonValue
+  }
+}
+
 async function updateStepText(stepId: string, text: string): Promise<void> {
+  const safeText = sanitizeText(text)
+  const safeOutput = createSafeJsonObject({ text: safeText })
   await prisma.step.update({
     where: { id: stepId },
-    data: { outputRef: { text } as Prisma.InputJsonValue },
+    data: { outputRef: safeOutput },
   })
 }
 
@@ -41,22 +116,31 @@ async function upsertRewriteVersionForStep(args: {
     select: { id: true },
   })
 
+  // 先 sanitize 文本，确保 charCount 与实际存储的文本长度一致
+  const sanitizedOutputText = sanitizeText(args.outputText)
+  
   const similarityScore = calculateSimilarity(
     (await prisma.contentItem.findUnique({ where: { id: args.contentItemId }, select: { textOriginal: true } }))?.textOriginal || "",
-    args.outputText
+    sanitizedOutputText
   )
+
+  const safeOutput = createSafeJsonObject({ text: sanitizedOutputText })
+  const safeParams = createSafeJsonObject(args.params as Record<string, unknown>)
+  const safeWarnings = similarityScore > 0.5 
+    ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) 
+    : ([] as Prisma.InputJsonValue)
 
   if (existing) {
     const updated = await prisma.rewriteVersion.update({
       where: { id: existing.id },
       data: {
-        output: { text: args.outputText } as Prisma.InputJsonValue,
+        output: safeOutput,
         outputFormat: args.params.outputFormat || "single",
-        paramsSnapshot: args.params as Prisma.InputJsonValue,
+        paramsSnapshot: safeParams,
         status: "GENERATED",
-        charCount: args.outputText.length,
+        charCount: sanitizedOutputText.length,
         similarityScore,
-        warnings: similarityScore > 0.5 ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) : ([] as Prisma.InputJsonValue),
+        warnings: safeWarnings,
       },
       select: { id: true },
     })
@@ -79,13 +163,13 @@ async function upsertRewriteVersionForStep(args: {
     data: {
       contentItemId: args.contentItemId,
       version: nextVersion,
-      output: { text: args.outputText } as Prisma.InputJsonValue,
+      output: safeOutput,
       outputFormat: args.params.outputFormat || "single",
-      paramsSnapshot: args.params as Prisma.InputJsonValue,
+      paramsSnapshot: safeParams,
       status: "GENERATED",
-      charCount: args.outputText.length,
+      charCount: sanitizedOutputText.length,
       similarityScore,
-      warnings: similarityScore > 0.5 ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) : ([] as Prisma.InputJsonValue),
+      warnings: safeWarnings,
       jobId: args.jobId,
       stepId: args.stepId,
     },
@@ -132,24 +216,25 @@ async function handleStreamRewrite(step: Step, job: Pick<Job, "id" | "workspaceI
     },
   })
 
-  await updateStepText(step.id, fullText)
+  const safeFullText = sanitizeText(fullText)
+  await updateStepText(step.id, safeFullText)
 
   if (contentItemId) {
     const rewriteVersionId = await upsertRewriteVersionForStep({
       stepId: step.id,
       jobId: job.id,
       contentItemId,
-      outputText: fullText,
+      outputText: safeFullText,
       params,
     })
     await prisma.step.update({
       where: { id: step.id },
-      data: { outputRef: { text: fullText, charCount: fullText.length, rewriteVersionId } as Prisma.InputJsonValue },
+      data: { outputRef: createSafeJsonObject({ text: safeFullText, charCount: safeFullText.length, rewriteVersionId }) },
     })
   } else {
     await prisma.step.update({
       where: { id: step.id },
-      data: { outputRef: { text: fullText, charCount: fullText.length } as Prisma.InputJsonValue },
+      data: { outputRef: createSafeJsonObject({ text: safeFullText, charCount: safeFullText.length }) },
     })
   }
 
@@ -195,10 +280,17 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
   const failures: Array<{ contentItemId: string; error: string }> = []
   let succeeded = 0
 
+  const safeParams = createSafeJsonObject(params as Record<string, unknown>)
+
   for (const item of ordered) {
     try {
-      const rewrittenText = await generateRewriteText(item.textOriginal, params)
+      const rawRewrittenText = await generateRewriteText(item.textOriginal, params)
+      const rewrittenText = sanitizeText(rawRewrittenText)
       const similarityScore = calculateSimilarity(item.textOriginal, rewrittenText)
+      const safeOutput = createSafeJsonObject({ text: rewrittenText })
+      const safeWarnings = similarityScore > 0.5 
+        ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) 
+        : ([] as Prisma.InputJsonValue)
 
       const existing = await prisma.rewriteVersion.findFirst({
         where: { batchId: rewriteBatchId, contentItemId: item.id, version: 1 },
@@ -209,13 +301,13 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
         await prisma.rewriteVersion.update({
           where: { id: existing.id },
           data: {
-            output: { text: rewrittenText } as Prisma.InputJsonValue,
+            output: safeOutput,
             outputFormat: params.outputFormat || "single",
-            paramsSnapshot: params as Prisma.InputJsonValue,
+            paramsSnapshot: safeParams,
             status: "GENERATED",
             charCount: rewrittenText.length,
             similarityScore,
-            warnings: similarityScore > 0.5 ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) : ([] as Prisma.InputJsonValue),
+            warnings: safeWarnings,
             jobId: job.id,
             stepId: step.id,
           },
@@ -226,13 +318,13 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
             contentItemId: item.id,
             batchId: rewriteBatchId,
             version: 1,
-            output: { text: rewrittenText } as Prisma.InputJsonValue,
+            output: safeOutput,
             outputFormat: params.outputFormat || "single",
-            paramsSnapshot: params as Prisma.InputJsonValue,
+            paramsSnapshot: safeParams,
             status: "GENERATED",
             charCount: rewrittenText.length,
             similarityScore,
-            warnings: similarityScore > 0.5 ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) : ([] as Prisma.InputJsonValue),
+            warnings: safeWarnings,
             jobId: job.id,
             stepId: step.id,
           },
@@ -271,7 +363,7 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
   await prisma.step.update({
     where: { id: step.id },
     data: {
-      outputRef: { total: ordered.length, succeeded, failed, failures } as Prisma.InputJsonValue,
+      outputRef: createSafeJsonObject({ total: ordered.length, succeeded, failed, failures }),
     },
   })
 
@@ -280,7 +372,7 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
     return
   }
 
-  await markStepSucceeded(step.id, { total: ordered.length, succeeded, failed: 0 } as Prisma.InputJsonValue)
+  await markStepSucceeded(step.id, createSafeJsonObject({ total: ordered.length, succeeded, failed: 0 }))
 }
 
 export async function handleRewriteStep(step: Step & { job: Pick<Job, "id" | "type" | "workspaceId" | "poolId"> }): Promise<void> {

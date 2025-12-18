@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,7 @@ import { Loader2, Check, ExternalLink, Chrome, Globe } from "lucide-react"
 import { useTranslations } from "@/stores/localeStore"
 import { locales, localeNames, type Locale } from "@/i18n"
 import { PoolsTagsSettings } from "@/components/settings/PoolsTagsSettings"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 interface BrowserSession {
     isLoggedIn: boolean
@@ -28,10 +29,31 @@ interface BrowserSession {
 
 export default function SettingsPage() {
     const { t, locale, setLocale } = useTranslations()
+    const { currentWorkspace, currentWorkspaceId, fetchWorkspaces } = useWorkspaceStore()
+    
     const [browserSession, setBrowserSession] = useState<BrowserSession | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isConnecting, setIsConnecting] = useState(false)
     const [statusMessage, setStatusMessage] = useState("")
+    
+    // Workspace settings state
+    const [workspaceName, setWorkspaceName] = useState("")
+    const [defaultPoolId, setDefaultPoolId] = useState("")
+    const [isSavingWorkspace, setIsSavingWorkspace] = useState(false)
+    const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+    // 加载工作区数据
+    useEffect(() => {
+        fetchWorkspaces()
+    }, [fetchWorkspaces])
+
+    // 当工作区变化时更新表单
+    useEffect(() => {
+        if (currentWorkspace) {
+            setWorkspaceName(currentWorkspace.name || "")
+            setDefaultPoolId(currentWorkspace.defaultPoolId || currentWorkspace.pools?.[0]?.id || "")
+        }
+    }, [currentWorkspace])
 
     // 检查浏览器登录状态
     useEffect(() => {
@@ -76,6 +98,45 @@ export default function SettingsPage() {
         }
     }
 
+    // 保存工作区设置
+    const handleSaveWorkspace = async () => {
+        if (!currentWorkspaceId) return
+        setIsSavingWorkspace(true)
+        setSaveMessage(null)
+
+        try {
+            const res = await fetch(`/api/workspaces/${currentWorkspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: workspaceName,
+                    defaultPoolId: defaultPoolId || undefined,
+                }),
+            })
+
+            if (res.ok) {
+                setSaveMessage({ type: "success", text: "Settings saved successfully!" })
+                // 刷新工作区数据
+                await fetchWorkspaces()
+                setTimeout(() => setSaveMessage(null), 3000)
+            } else {
+                const data = await res.json()
+                setSaveMessage({ type: "error", text: data.error || "Failed to save settings" })
+            }
+        } catch (error) {
+            console.error("Failed to save workspace:", error)
+            setSaveMessage({ type: "error", text: "Failed to save settings" })
+        } finally {
+            setIsSavingWorkspace(false)
+        }
+    }
+
+    // 检查是否有更改
+    const hasWorkspaceChanges = currentWorkspace && (
+        workspaceName !== currentWorkspace.name ||
+        defaultPoolId !== (currentWorkspace.defaultPoolId || currentWorkspace.pools?.[0]?.id || "")
+    )
+
     return (
         <PageShell title={t.settings.title} description={t.settings.description}>
             <div className="flex flex-col lg:flex-row gap-8">
@@ -113,22 +174,56 @@ export default function SettingsPage() {
                                 <div className="grid gap-4 p-4 rounded-lg border border-border/60 bg-card/30">
                                     <div className="space-y-1.5">
                                         <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Workspace Name</Label>
-                                        <Input defaultValue="Product Thoughts" className="bg-transparent border-border/60 h-8 text-sm" />
+                                        <Input 
+                                            value={workspaceName}
+                                            onChange={(e) => setWorkspaceName(e.target.value)}
+                                            placeholder="Enter workspace name..."
+                                            className="bg-transparent border-border/60 h-8 text-sm" 
+                                        />
                                     </div>
                                     <div className="space-y-1.5">
                                         <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Default Pool</Label>
-                                        <Select defaultValue="p1">
-                                            <SelectTrigger className="bg-transparent border-border/60 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <Select value={defaultPoolId} onValueChange={setDefaultPoolId}>
+                                            <SelectTrigger className="bg-transparent border-border/60 h-8 text-sm">
+                                                <SelectValue placeholder="Select default pool..." />
+                                            </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="p1">Industry News</SelectItem>
+                                                {currentWorkspace?.pools?.map((pool) => (
+                                                    <SelectItem key={pool.id} value={pool.id}>
+                                                        {pool.name}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                         <p className="text-[10px] text-muted-foreground">New ingests will default to this pool.</p>
                                     </div>
                                 </div>
                             </div>
+                            
+                            {/* Save Message */}
+                            {saveMessage && (
+                                <div className={`text-xs p-2 rounded ${
+                                    saveMessage.type === "success" 
+                                        ? "bg-green-50 text-green-600 border border-green-200" 
+                                        : "bg-red-50 text-red-600 border border-red-200"
+                                }`}>
+                                    {saveMessage.text}
+                                </div>
+                            )}
+                            
                             <div className="flex justify-end">
-                                <Button size="sm" className="h-8 text-xs">Save Changes</Button>
+                                <Button 
+                                    size="sm" 
+                                    className="h-8 text-xs"
+                                    onClick={handleSaveWorkspace}
+                                    disabled={isSavingWorkspace || !hasWorkspaceChanges}
+                                >
+                                    {isSavingWorkspace ? (
+                                        <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Saving...</>
+                                    ) : (
+                                        <><Check className="h-3 w-3 mr-1.5" /> Save Changes</>
+                                    )}
+                                </Button>
                             </div>
                         </TabsContent>
 

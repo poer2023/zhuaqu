@@ -14,6 +14,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     ArrowLeft,
     Send,
@@ -25,6 +26,7 @@ import {
     AlertTriangle,
     FileText,
     Twitter,
+    ShieldCheck,
 } from "lucide-react"
 import { format } from "date-fns"
 
@@ -69,6 +71,9 @@ export default function PublishPage({
     const [isPublishing, setIsPublishing] = useState(false)
     const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined)
     const [scheduleTime, setScheduleTime] = useState<string>("12:00")
+    
+    // 合规确认
+    const [complianceConfirmed, setComplianceConfirmed] = useState(false)
 
     const returnUrl = searchParams.get("from") || `/content/${id}`
 
@@ -205,7 +210,7 @@ export default function PublishPage({
                         <div className="flex items-center gap-2">
                             <Button
                                 onClick={handlePublishNow}
-                                disabled={isPublishing || !isApproved}
+                                disabled={isPublishing || !isApproved || !complianceConfirmed}
                             >
                                 {isPublishing ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -260,6 +265,38 @@ export default function PublishPage({
 
                     {/* Right: Settings & History */}
                     <div className="space-y-4">
+                        {/* Compliance Confirmation */}
+                        <div className={`rounded-lg border p-4 space-y-3 transition-colors ${
+                            complianceConfirmed 
+                                ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30" 
+                                : "bg-card"
+                        }`}>
+                            <div className="flex items-start gap-3">
+                                <ShieldCheck className={`h-5 w-5 shrink-0 mt-0.5 ${
+                                    complianceConfirmed ? "text-green-600" : "text-muted-foreground"
+                                }`} />
+                                <div className="flex-1 space-y-2">
+                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                        发布前确认
+                                    </Label>
+                                    <div className="flex items-start gap-2">
+                                        <Checkbox
+                                            id="compliance"
+                                            checked={complianceConfirmed}
+                                            onCheckedChange={(checked) => setComplianceConfirmed(checked === true)}
+                                            className="mt-0.5"
+                                        />
+                                        <label 
+                                            htmlFor="compliance" 
+                                            className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
+                                        >
+                                            我已确认此内容符合平台规范，不含敏感信息、侵权内容或违规言论，且已获得必要授权进行发布。
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         {/* Schedule */}
                         <div className="rounded-lg border bg-card p-4 space-y-4">
                             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -293,7 +330,7 @@ export default function PublishPage({
                                 variant="outline"
                                 className="w-full"
                                 onClick={handleSchedule}
-                                disabled={!scheduleDate || isPublishing || !isApproved}
+                                disabled={!scheduleDate || isPublishing || !isApproved || !complianceConfirmed}
                             >
                                 <Clock className="h-4 w-4 mr-2" />
                                 设置定时发布
