@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
             ...item,
             tags: item.tags.map(t => t.tag),
             hasApprovedRewrite: item.rewriteVersions.length > 0,
+            approvedRewriteVersionId: item.rewriteVersions[0]?.id,
             rewriteCount: item._count.rewriteVersions,
         }))
 

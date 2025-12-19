@@ -94,7 +94,7 @@ export const logger = {
 
 // ==================== Metrics Functions ====================
 
-export function recordStepClaimed(processingStartMs: number): void {
+export function recordStepClaimed(_processingStartMs: number): void {
     metrics.stepsClaimed++
 }
 

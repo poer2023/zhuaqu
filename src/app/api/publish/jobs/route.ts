@@ -88,11 +88,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { workspaceId, rewriteVersionIds, mode, scheduledAt } = body
+        const { workspaceId, rewriteVersionIds, mode, scheduledAt, complianceConfirmed } = body
 
         if (!workspaceId || !rewriteVersionIds || !Array.isArray(rewriteVersionIds)) {
             return NextResponse.json(
                 { error: "workspaceId and rewriteVersionIds are required" },
+                { status: 400 }
+            )
+        }
+
+        // 强制合规检查
+        if (complianceConfirmed !== true) {
+            return NextResponse.json(
+                { error: "Compliance confirmation is required" },
                 { status: 400 }
             )
         }
@@ -192,6 +200,7 @@ export async function POST(request: NextRequest) {
                                 orchestrationJobId: orchestrationJob.id,
                                 mode,
                                 scheduledAt,
+                                complianceConfirmed: true, // 明确记录用户已确认
                             },
                             actor: "owner",
                         }

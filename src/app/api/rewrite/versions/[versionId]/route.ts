@@ -23,12 +23,10 @@ export async function PATCH(
             )
         }
 
-        let newStatus = version.status
         let updateData: Record<string, unknown> = {}
 
         switch (action) {
             case "approve":
-                newStatus = "APPROVED"
                 updateData = {
                     status: "APPROVED",
                     reviewedAt: new Date(),
@@ -53,7 +51,6 @@ export async function PATCH(
                 break
 
             case "reject":
-                newStatus = "REJECTED"
                 updateData = {
                     status: "REJECTED",
                     reviewedAt: new Date(),
@@ -76,7 +73,6 @@ export async function PATCH(
                 break
 
             case "rework":
-                newStatus = "REWORK"
                 updateData = {
                     status: "REWORK",
                     reviewedAt: new Date(),

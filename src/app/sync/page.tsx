@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     Select,
     SelectContent,
@@ -37,6 +38,8 @@ export default function SyncPage() {
     const [newJobSource, setNewJobSource] = useState<"LIKES" | "BOOKMARKS" | "TIMELINE">("LIKES")
     const [newJobPoolIdByWorkspace, setNewJobPoolIdByWorkspace] = useState<Record<string, string>>({})
     const [newJobLimit, setNewJobLimit] = useState(100)
+    const [mediaOnly, setMediaOnly] = useState(false)
+    const [includeReplies, setIncludeReplies] = useState(false)
 
     const { currentWorkspace, currentWorkspaceId, fetchWorkspaces } = useWorkspaceStore()
     const {
@@ -74,7 +77,7 @@ export default function SyncPage() {
             workspaceId: currentWorkspaceId,
             poolId: effectiveNewJobPoolId,
             source: newJobSource,
-            options: { limit: newJobLimit }
+            options: { limit: newJobLimit, mediaOnly, includeReplies }
         })
         setShowCreateDialog(false)
     }
@@ -189,6 +192,34 @@ export default function SyncPage() {
                                         <SelectItem value="500">500 items</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="col-span-3 grid grid-cols-2 gap-4">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="mediaOnly"
+                                        checked={mediaOnly}
+                                        onCheckedChange={(c) => setMediaOnly(c === true)}
+                                    />
+                                    <label
+                                        htmlFor="mediaOnly"
+                                        className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                        Media Only (Skip text tweets)
+                                    </label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="includeReplies"
+                                        checked={includeReplies}
+                                        onCheckedChange={(c) => setIncludeReplies(c === true)}
+                                    />
+                                    <label
+                                        htmlFor="includeReplies"
+                                        className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                        Include Replies
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div className="flex justify-end gap-2">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { retryStep } from "@/server/orchestrator/orchestrator"
+import type { OrchestratorJobType, OrchestratorStepType } from "@prisma/client"
 
 // 批量重试失败的 steps
 export async function POST(request: NextRequest) {
@@ -26,10 +27,10 @@ export async function POST(request: NextRequest) {
             const steps = await prisma.step.findMany({
                 where: {
                     status: (filter.status as "FAILED") || "FAILED",
-                    ...(filter.stepType ? { type: filter.stepType as any } : {}),
+                    ...(filter.stepType ? { type: filter.stepType as OrchestratorStepType } : {}),
                     job: {
                         ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
-                        ...(filter.jobType ? { type: filter.jobType as any } : {}),
+                        ...(filter.jobType ? { type: filter.jobType as OrchestratorJobType } : {}),
                     },
                 },
                 select: { id: true },

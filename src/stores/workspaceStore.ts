@@ -7,6 +7,7 @@ interface Workspace {
     description?: string
     defaultPoolId?: string
     pools: Pool[]
+    settings?: Record<string, unknown>
     _count?: {
         contentItems: number
         tags: number

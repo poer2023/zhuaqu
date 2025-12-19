@@ -17,8 +17,6 @@ import {
 } from "@/components/ui/select"
 import {
     ArrowLeft,
-    ChevronLeft,
-    ChevronRight,
     RefreshCw,
     Check,
     X,
@@ -58,7 +56,7 @@ export default function RewritePage({
     params: Promise<{ id: string }>
 }) {
     const { id } = use(params)
-    const { t } = useTranslations()
+    useTranslations() // Call hook but don't destructure unused t
     const router = useRouter()
     const searchParams = useSearchParams()
 
@@ -215,7 +213,7 @@ export default function RewritePage({
         }
     }
 
-    const selectedVersion = item?.rewriteVersions?.find(v => v.id === selectedVersionId)
+    const _selectedVersion = item?.rewriteVersions?.find(v => v.id === selectedVersionId)
 
     if (isLoading) {
         return (

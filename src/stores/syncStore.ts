@@ -66,7 +66,7 @@ interface SyncState {
     }) => Promise<void>
 }
 
-export const useSyncStore = create<SyncState>((set, get) => ({
+export const useSyncStore = create<SyncState>((set) => ({
     jobs: [],
     currentJob: null,
     isLoading: false,

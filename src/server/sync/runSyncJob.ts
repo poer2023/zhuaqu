@@ -156,6 +156,9 @@ export async function runSyncJob(args: { syncJobId: string; orchestrationJobId: 
       jobId: args.orchestrationJobId,
       url,
       mediaMode: "link",
+      options: {
+        ignoreReplies: !options.includeReplies
+      }
     })
 
     nextProgress.submitted++
@@ -178,6 +181,9 @@ export async function runSyncJob(args: { syncJobId: string; orchestrationJobId: 
       ingested++
       nextProgress.ingested++
     } else if (res.outcome === "deduped") {
+      deduped++
+      nextProgress.deduped++
+    } else if (res.outcome === "failed" && res.code === "SKIPPED_REPLY") {
       deduped++
       nextProgress.deduped++
     } else {

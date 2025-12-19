@@ -24,10 +24,9 @@ import {
     CheckCircle2,
     XCircle,
     AlertCircle,
-    RefreshCw,
     ExternalLink,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useIngestStore } from "@/stores/ingestStore"
 import { useTranslations } from "@/stores/localeStore"
@@ -39,7 +38,7 @@ interface ValidationResult {
 }
 
 export default function IngestPage() {
-    const { t } = useTranslations()
+    useTranslations() // Call hook but don't destructure unused t
     const router = useRouter()
 
     // Input state
@@ -159,12 +158,12 @@ export default function IngestPage() {
                         </Label>
                         <div className="relative">
                             <Link2 className="absolute top-3 left-3 h-4 w-4 text-muted-foreground/40" />
-                                <Textarea
-                                    className="min-h-[200px] pl-10 pt-3 text-sm font-mono bg-background/50 resize-none"
-                                    placeholder="https://x.com/user/status/123...&#10;https://twitter.com/user/status/456..."
-                                    value={urlInput}
-                                    onChange={(e) => handleUrlInputChange(e.target.value)}
-                                />
+                            <Textarea
+                                className="min-h-[200px] pl-10 pt-3 text-sm font-mono bg-background/50 resize-none"
+                                placeholder="https://x.com/user/status/123...&#10;https://twitter.com/user/status/456..."
+                                value={urlInput}
+                                onChange={(e) => handleUrlInputChange(e.target.value)}
+                            />
                         </div>
                     </div>
 

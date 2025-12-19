@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
 import { PageShell } from "@/components/layout/PageShell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,18 +15,11 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
     Plus,
     Search,
     Filter,
     X,
     Loader2,
-    MoreHorizontal,
     ExternalLink,
     RefreshCw,
     CheckCircle2,
@@ -39,7 +31,6 @@ import {
     Eye,
     MessageCircle,
     Repeat,
-    Info,
     Trash2
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -56,6 +47,15 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface ContentItem {
     id: string
@@ -82,7 +82,9 @@ interface ContentItem {
     createdAt: string
     updatedAt: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rawJson?: any
+    approvedRewriteVersionId?: string
 }
 
 // Wrapper component to handle Suspense for useSearchParams
@@ -98,6 +100,12 @@ function ContentPageInner() {
     const [isLoading, setIsLoading] = useState(true)
     const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isMoving, setIsMoving] = useState(false)
+    const [moveTargetPoolId, setMoveTargetPoolId] = useState<string>("")
+    const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+    const [isBatchActionLoading, setIsBatchActionLoading] = useState(false)
+    const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+    const [publishComplianceConfirmed, setPublishComplianceConfirmed] = useState(false)
 
     // Filters from URL
     const searchQuery = searchParams.get("q") || ""
@@ -153,7 +161,7 @@ function ContentPageInner() {
         router.push(`/content/${item.id}?from=${returnUrl}`)
     }
 
-    const getStatusBadge = (status: string) => {
+    const _getStatusBadge = (status: string) => {
         const normalized = status?.toUpperCase() || "NONE"
         const colors: Record<string, string> = {
             READY: "bg-green-500/10 text-green-500 border-green-500/20",
@@ -283,6 +291,123 @@ function ContentPageInner() {
         }
     }
 
+    // Batch Move
+    const handleMoveSelected = () => {
+        setMoveTargetPoolId("")
+        setMoveDialogOpen(true)
+    }
+
+    const confirmMove = async () => {
+        if (!moveTargetPoolId || selectedItems.size === 0) return
+        setIsMoving(true)
+        try {
+            const res = await fetch("/api/pools/items", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "move",
+                    itemIds: Array.from(selectedItems),
+                    data: { poolId: moveTargetPoolId }
+                })
+            })
+            if (res.ok) {
+                // If we are filtering by pool, remove moved items from view
+                if (selectedPoolId !== "all" && selectedPoolId !== moveTargetPoolId) {
+                    setItems(prev => prev.filter(item => !selectedItems.has(item.id)))
+                } else {
+                    // Update pool info locally
+                    const targetPool = currentWorkspace?.pools.find(p => p.id === moveTargetPoolId)
+                    setItems(prev => prev.map(item => {
+                        if (selectedItems.has(item.id)) {
+                            return { ...item, poolId: moveTargetPoolId, pool: targetPool ? { id: targetPool.id, name: targetPool.name } : item.pool }
+                        }
+                        return item
+                    }))
+                }
+                setSelectedItems(new Set())
+                setMoveDialogOpen(false)
+            }
+        } catch (error) {
+            console.error("Failed to move items:", error)
+        } finally {
+            setIsMoving(false)
+        }
+    }
+
+    // Batch Rewrite
+    const handleRewriteSelected = async () => {
+        if (selectedItems.size === 0) return
+        setIsBatchActionLoading(true)
+        try {
+            const res = await fetch("/api/rewrite/batches", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: currentWorkspaceId,
+                    itemIds: Array.from(selectedItems),
+                    name: `Batch Rewrite ${new Date().toLocaleDateString()}`
+                })
+            })
+            if (res.ok) {
+                const data = await res.json()
+                if (data.batch?.id) {
+                    router.push(`/rewrite?batchId=${data.batch.id}`)
+                }
+            }
+        } catch (error) {
+            console.error("Failed to create rewrite batch:", error)
+        } finally {
+            setIsBatchActionLoading(false)
+        }
+    }
+
+    // Batch Publish (Add to Queue)
+    const handlePublishSelected = async () => {
+        if (selectedItems.size === 0) return
+
+        // Filter items that have approved rewrite versions
+        const itemsToPublish = items.filter(i => selectedItems.has(i.id) && i.approvedRewriteVersionId)
+
+        if (itemsToPublish.length === 0) {
+            alert("选中的条目中没有已通过改写内容的内容 (Approved Rewrite)。")
+            return
+        }
+
+        // Open the compliance confirmation dialog
+        setPublishComplianceConfirmed(false)
+        setPublishDialogOpen(true)
+    }
+
+    const confirmBatchPublish = async () => {
+        if (!publishComplianceConfirmed) return
+        const itemsToPublish = items.filter(i => selectedItems.has(i.id) && i.approvedRewriteVersionId)
+
+        setIsBatchActionLoading(true)
+        setPublishDialogOpen(false)
+        try {
+            const rewriteVersionIds = itemsToPublish.map(i => i.approvedRewriteVersionId!)
+
+            await fetch("/api/publish/jobs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: currentWorkspaceId,
+                    rewriteVersionIds,
+                    mode: "single",
+                    complianceConfirmed: true
+                })
+            })
+
+            fetchItems()
+            setSelectedItems(new Set())
+            router.push("/publish")
+        } catch (error) {
+            console.error("Failed to batch publish:", error)
+        } finally {
+            setIsBatchActionLoading(false)
+        }
+    }
+
     return (
         <PageShell
             title={
@@ -389,20 +514,47 @@ function ContentPageInner() {
                                 </div>
                                 <div className="flex gap-2">
                                     <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleMoveSelected}
+                                        disabled={isMoving || isBatchActionLoading}
+                                    >
+                                        <Repeat className="h-4 w-4 mr-2" />
+                                        移动至...
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleRewriteSelected}
+                                        disabled={isMoving || isBatchActionLoading}
+                                    >
+                                        <PenTool className="h-4 w-4 mr-2" />
+                                        批量改写
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handlePublishSelected}
+                                        disabled={isMoving || isBatchActionLoading}
+                                    >
+                                        <Send className="h-4 w-4 mr-2" />
+                                        批量发布
+                                    </Button>
+                                    <div className="w-px h-6 bg-border mx-1"></div>
+                                    <Button
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => setSelectedItems(new Set())}
                                     >
-                                        取消选择
+                                        取消
                                     </Button>
                                     <Button
                                         variant="destructive"
                                         size="sm"
                                         onClick={handleDeleteSelected}
-                                        disabled={isDeleting}
+                                        disabled={isDeleting || isMoving || isBatchActionLoading}
                                     >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        删除选中
+                                        <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
@@ -412,6 +564,7 @@ function ContentPageInner() {
                                 // rawJson can be X GraphQL response or yt-dlp output
                                 const rawJson = item.rawJson || {}
 
+                                /* eslint-disable @typescript-eslint/no-explicit-any */
                                 // Try X GraphQL structure: data.tweetResult.result.legacy
                                 const graphqlLegacy = (rawJson as any)?.data?.tweetResult?.result?.legacy ||
                                     (rawJson as any)?.data?.tweetResult?.result?.tweet?.legacy || {}
@@ -424,12 +577,13 @@ function ContentPageInner() {
                                 // Extract counts with fallbacks
                                 const likeCount = graphqlLegacy.favorite_count ?? ytdlp.like_count ?? ytdlp.favorite_count ?? 0
                                 const replyCount = graphqlLegacy.reply_count ?? ytdlp.reply_count ?? 0
-                                const repostCount = graphqlLegacy.retweet_count ?? graphqlLegacy.quote_count ?? ytdlp.repost_count ?? ytdlp.retweet_count ?? 0
+                                const _repostCount = graphqlLegacy.retweet_count ?? graphqlLegacy.quote_count ?? ytdlp.repost_count ?? ytdlp.retweet_count ?? 0
                                 const viewCount = graphqlResult.views?.count ?? ytdlp.view_count ?? 0
 
                                 // Author info
                                 const graphqlUser = (rawJson as any)?.data?.tweetResult?.result?.core?.user_results?.result?.legacy ||
                                     (rawJson as any)?.data?.tweetResult?.result?.tweet?.core?.user_results?.result?.legacy || {}
+                                /* eslint-enable @typescript-eslint/no-explicit-any */
                                 const authorAvatar = item.authorAvatar || graphqlUser.profile_image_url_https || ytdlp.uploader_url
                                 const authorName = item.authorName || graphqlUser.name || ytdlp.uploader || item.authorHandle
                                 const createdTime = graphqlLegacy.created_at || ytdlp.timestamp || item.createdAt
@@ -688,6 +842,76 @@ function ContentPageInner() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Move Dialog */}
+            <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>移动至素材池</DialogTitle>
+                        <DialogDescription>
+                            将选中的 {selectedItems.size} 条内容移动到指定素材池。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label className="mb-2 block">选择目标素材池</Label>
+                        <Select value={moveTargetPoolId} onValueChange={setMoveTargetPoolId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="选择素材池..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {currentWorkspace?.pools?.map(p => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setMoveDialogOpen(false)}>取消</Button>
+                        <Button onClick={confirmMove} disabled={!moveTargetPoolId || isMoving}>
+                            {isMoving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            确认移动
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Batch Publish Compliance Dialog */}
+            <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>批量发布确认</DialogTitle>
+                        <DialogDescription>
+                            准备将 {items.filter(i => selectedItems.has(i.id) && i.approvedRewriteVersionId).length} 条已审核内容加入发布队列。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${publishComplianceConfirmed
+                            ? "bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30"
+                            : "bg-muted/20"
+                            }`}>
+                            <Checkbox
+                                id="batch-compliance"
+                                checked={publishComplianceConfirmed}
+                                onCheckedChange={(c) => setPublishComplianceConfirmed(c === true)}
+                                className="mt-0.5"
+                            />
+                            <label
+                                htmlFor="batch-compliance"
+                                className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
+                            >
+                                我已确认选中的所有内容均符合平台规范，不含敏感信息、侵权内容或违规言论，且已获得必要授权进行发布。
+                            </label>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>取消</Button>
+                        <Button onClick={confirmBatchPublish} disabled={!publishComplianceConfirmed || isBatchActionLoading}>
+                            {isBatchActionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            确认发布
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </PageShell>
     )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,10 +14,10 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { PageShell } from "@/components/layout/PageShell"
-import { Loader2, Check, ExternalLink, Chrome, Globe } from "lucide-react"
+import { Loader2, Check, ExternalLink, Chrome } from "lucide-react"
 import { useTranslations } from "@/stores/localeStore"
-import { locales, localeNames, type Locale } from "@/i18n"
 import { PoolsTagsSettings } from "@/components/settings/PoolsTagsSettings"
+import { BlacklistSettings } from "@/components/settings/BlacklistSettings"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 interface BrowserSession {
@@ -28,14 +28,14 @@ interface BrowserSession {
 }
 
 export default function SettingsPage() {
-    const { t, locale, setLocale } = useTranslations()
+    const { t } = useTranslations()
     const { currentWorkspace, currentWorkspaceId, fetchWorkspaces } = useWorkspaceStore()
-    
+
     const [browserSession, setBrowserSession] = useState<BrowserSession | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isConnecting, setIsConnecting] = useState(false)
     const [statusMessage, setStatusMessage] = useState("")
-    
+
     // Workspace settings state
     const [workspaceName, setWorkspaceName] = useState("")
     const [defaultPoolId, setDefaultPoolId] = useState("")
@@ -155,6 +155,12 @@ export default function SettingsPage() {
                         >
                             {t.settings.tabs.poolsTags}
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="rules"
+                            className="w-full justify-start px-2 py-2 data-[state=active]:bg-zinc-100 dark:data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:font-medium data-[state=active]:shadow-none -ml-2 rounded-md text-sm text-muted-foreground transition-all hover:text-foreground"
+                        >
+                            Blacklist & Rules
+                        </TabsTrigger>
                         <div className="mt-3 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-full">{t.settings.tabs.system}</div>
                         <TabsTrigger
                             value="integrations"
@@ -174,11 +180,11 @@ export default function SettingsPage() {
                                 <div className="grid gap-4 p-4 rounded-lg border border-border/60 bg-card/30">
                                     <div className="space-y-1.5">
                                         <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Workspace Name</Label>
-                                        <Input 
+                                        <Input
                                             value={workspaceName}
                                             onChange={(e) => setWorkspaceName(e.target.value)}
                                             placeholder="Enter workspace name..."
-                                            className="bg-transparent border-border/60 h-8 text-sm" 
+                                            className="bg-transparent border-border/60 h-8 text-sm"
                                         />
                                     </div>
                                     <div className="space-y-1.5">
@@ -199,21 +205,20 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {/* Save Message */}
                             {saveMessage && (
-                                <div className={`text-xs p-2 rounded ${
-                                    saveMessage.type === "success" 
-                                        ? "bg-green-50 text-green-600 border border-green-200" 
-                                        : "bg-red-50 text-red-600 border border-red-200"
-                                }`}>
+                                <div className={`text-xs p-2 rounded ${saveMessage.type === "success"
+                                    ? "bg-green-50 text-green-600 border border-green-200"
+                                    : "bg-red-50 text-red-600 border border-red-200"
+                                    }`}>
                                     {saveMessage.text}
                                 </div>
                             )}
-                            
+
                             <div className="flex justify-end">
-                                <Button 
-                                    size="sm" 
+                                <Button
+                                    size="sm"
                                     className="h-8 text-xs"
                                     onClick={handleSaveWorkspace}
                                     disabled={isSavingWorkspace || !hasWorkspaceChanges}
@@ -229,6 +234,10 @@ export default function SettingsPage() {
 
                         <TabsContent value="pools" className="space-y-6 m-0 focus:outline-none">
                             <PoolsTagsSettings />
+                        </TabsContent>
+
+                        <TabsContent value="rules" className="space-y-6 m-0 focus:outline-none">
+                            <BlacklistSettings />
                         </TabsContent>
 
                         <TabsContent value="integrations" className="space-y-6 m-0 focus:outline-none">

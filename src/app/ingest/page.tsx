@@ -26,6 +26,7 @@ export default function IngestPage() {
     const [selectedPoolIdByWorkspace, setSelectedPoolIdByWorkspace] = useState<Record<string, string>>({})
     const [mediaMode, setMediaMode] = useState<"link" | "download">("link")
     const [threadMode, setThreadMode] = useState<"single" | "thread">("single")
+    const [quoteMode, setQuoteMode] = useState<"ignore" | "follow">("ignore")
 
     // Zustand stores
     const { workspaces, currentWorkspace, currentWorkspaceId, fetchWorkspaces, isLoading: wsLoading } = useWorkspaceStore()
@@ -52,7 +53,7 @@ export default function IngestPage() {
             poolId: effectivePoolId,
             urls,
             tags: selectedTags,
-            options: { mediaMode, threadMode },
+            options: { mediaMode, threadMode, quoteMode },
         })
     }
 
@@ -124,8 +125,18 @@ export default function IngestPage() {
                                     <Select value={threadMode} onValueChange={(v) => setThreadMode(v as "single" | "thread")}>
                                         <SelectTrigger className="bg-background/50 h-8 text-sm"><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="single">Single Tweet</SelectItem>
-                                            <SelectItem value="thread">Full Thread</SelectItem>
+                                            <SelectItem value="single">Single Tweet (Current)</SelectItem>
+                                            <SelectItem value="thread">Full Thread (Auto Expand)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quote Mode</Label>
+                                    <Select value={quoteMode} onValueChange={(v) => setQuoteMode(v as "ignore" | "follow")}>
+                                        <SelectTrigger className="bg-background/50 h-8 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ignore">Ignore Quotes</SelectItem>
+                                            <SelectItem value="follow">Follow Quotes (Capture)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

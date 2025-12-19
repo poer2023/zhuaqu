@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { ChevronLeft as _ChevronLeft, ChevronRight as _ChevronRight } from "lucide-react"
 import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"

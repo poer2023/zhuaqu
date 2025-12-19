@@ -19,7 +19,6 @@ import {
     Loader2,
     ArrowRight,
     CheckCircle2,
-    XCircle,
     AlertCircle,
     Link2,
     Zap,
@@ -27,7 +26,6 @@ import {
 } from "lucide-react"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useIngestStore } from "@/stores/ingestStore"
-import { cn } from "@/lib/utils"
 
 interface CaptureDrawerProps {
     open: boolean

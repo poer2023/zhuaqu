@@ -25,16 +25,16 @@ function asParams(value: unknown): RewriteParams {
 // 创建安全的 JSON 对象，确保可以被 Prisma/PostgreSQL 正确处理
 function sanitizeText(text: string): string {
   if (!text) return text
-  
+
   let cleaned = ''
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i)
-    
+
     // 跳过控制字符（除了 tab, lf, cr）
     if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
       continue
     }
-    
+
     // 处理 Unicode 代理对
     if (code >= 0xD800 && code <= 0xDBFF) {
       const next = text.charCodeAt(i + 1)
@@ -47,12 +47,12 @@ function sanitizeText(text: string): string {
       // 否则跳过孤立的高代理
       continue
     }
-    
+
     // 跳过孤立的低代理
     if (code >= 0xDC00 && code <= 0xDFFF) {
       continue
     }
-    
+
     cleaned += text[i]
   }
   // 移除可能导致 JSON 解析失败的转义序列（如不完整的 \x?? 或 \u???）
@@ -82,7 +82,7 @@ function createSafeJsonObject(obj: Record<string, unknown>): Prisma.InputJsonVal
   // 通过 JSON 序列化/反序列化来"清洗"对象，确保可存储
   try {
     return JSON.parse(JSON.stringify(normalized)) as Prisma.InputJsonValue
-  } catch (e) {
+  } catch (_e) {
     // 若仍失败，返回字符串化后的安全文本
     const fallback: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(normalized)) {
@@ -118,7 +118,7 @@ async function upsertRewriteVersionForStep(args: {
 
   // 先 sanitize 文本，确保 charCount 与实际存储的文本长度一致
   const sanitizedOutputText = sanitizeText(args.outputText)
-  
+
   const similarityScore = calculateSimilarity(
     (await prisma.contentItem.findUnique({ where: { id: args.contentItemId }, select: { textOriginal: true } }))?.textOriginal || "",
     sanitizedOutputText
@@ -126,8 +126,8 @@ async function upsertRewriteVersionForStep(args: {
 
   const safeOutput = createSafeJsonObject({ text: sanitizedOutputText })
   const safeParams = createSafeJsonObject(args.params as Record<string, unknown>)
-  const safeWarnings = similarityScore > 0.5 
-    ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) 
+  const safeWarnings = similarityScore > 0.5
+    ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue)
     : ([] as Prisma.InputJsonValue)
 
   if (existing) {
@@ -288,8 +288,8 @@ async function handleBatchRewrite(step: Step, job: Pick<Job, "id" | "workspaceId
       const rewrittenText = sanitizeText(rawRewrittenText)
       const similarityScore = calculateSimilarity(item.textOriginal, rewrittenText)
       const safeOutput = createSafeJsonObject({ text: rewrittenText })
-      const safeWarnings = similarityScore > 0.5 
-        ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue) 
+      const safeWarnings = similarityScore > 0.5
+        ? (["与原文相似度较高，建议进一步改写"] as Prisma.InputJsonValue)
         : ([] as Prisma.InputJsonValue)
 
       const existing = await prisma.rewriteVersion.findFirst({

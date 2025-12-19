@@ -128,6 +128,10 @@ export type ExtractedXTweet = {
   raw: unknown
   images: ExtractedXMediaImage[]
   video: ExtractedXMediaVideo | null
+  isReply: boolean
+  inReplyToStatusId: string | null
+  conversationId: string | null  // Thread root ID
+  quotedTweetUrl: string | null  // URL of quoted tweet
 }
 
 function toOrigImageUrl(input: string): string {
@@ -297,6 +301,24 @@ export function extractTweetFromXGraphql(raw: unknown): ExtractedXTweet {
     }
   }
 
+  // Extract conversation ID and quoted tweet
+  const conversationId = asString(legacyRec.conversation_id_str) ?? null
+
+  // Check for quoted tweet
+  let quotedTweetUrl: string | null = null
+  const quotedStatusResult = getPath(result, ["quoted_status_result", "result"])
+  if (isRecord(quotedStatusResult)) {
+    const quotedLegacy = getPath(quotedStatusResult, ["legacy"])
+    if (isRecord(quotedLegacy)) {
+      const quotedId = asString(quotedLegacy.id_str)
+      const quotedUserResult = getPath(quotedStatusResult, ["core", "user_results", "result", "legacy"])
+      const quotedHandle = isRecord(quotedUserResult) ? asString(quotedUserResult.screen_name) : null
+      if (quotedId && quotedHandle) {
+        quotedTweetUrl = `https://x.com/${quotedHandle}/status/${quotedId}`
+      }
+    }
+  }
+
   return {
     authorHandle,
     authorName,
@@ -305,5 +327,9 @@ export function extractTweetFromXGraphql(raw: unknown): ExtractedXTweet {
     raw,
     images,
     video,
+    isReply: !!asString(legacyRec.in_reply_to_status_id_str),
+    inReplyToStatusId: asString(legacyRec.in_reply_to_status_id_str),
+    conversationId,
+    quotedTweetUrl
   }
 }

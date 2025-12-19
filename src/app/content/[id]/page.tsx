@@ -60,6 +60,19 @@ interface ContentItem {
     notes?: string
     createdAt: string
     updatedAt: string
+    rewriteVersions?: Array<{
+        id: string
+        version: number
+        status: string
+        createdAt: string
+        output?: unknown
+    }>
+    publishResults?: Array<{
+        id: string
+        tweetId: string
+        tweetUrl: string
+        publishedAt: string
+    }>
 }
 
 // Workflow step component
@@ -598,6 +611,71 @@ export default function ContentDetailPage({
                                         查看源
                                     </a>
                                 </Button>
+                            </div>
+                        </div>
+
+                        {/* Rewrite History */}
+                        <div className="rounded-lg border bg-card p-4 space-y-3">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                <PenTool className="h-3 w-3" />
+                                改写版本 ({item.rewriteVersions?.length || 0})
+                            </Label>
+                            <div className="space-y-2">
+                                {item.rewriteVersions && item.rewriteVersions.length > 0 ? (
+                                    item.rewriteVersions.map((v) => (
+                                        <div key={v.id} className="flex items-center justify-between text-sm p-2 rounded-md bg-muted/40 hover:bg-muted/80 transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="outline" className="font-mono text-[10px] h-5 px-1.5">
+                                                    v{v.version}
+                                                </Badge>
+                                                <span className={cn(
+                                                    "text-xs font-medium",
+                                                    v.status === "APPROVED" ? "text-green-600" :
+                                                        v.status === "REJECTED" ? "text-red-600" : "text-muted-foreground"
+                                                )}>
+                                                    {v.status}
+                                                </span>
+                                            </div>
+                                            <div className="text-[10px] text-muted-foreground">
+                                                {format(new Date(v.createdAt), "MM/dd HH:mm")}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-xs text-muted-foreground py-2 text-center">暂无改写记录</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Publish History */}
+                        <div className="rounded-lg border bg-card p-4 space-y-3">
+                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                <Send className="h-3 w-3" />
+                                发布记录 ({item.publishResults?.length || 0})
+                            </Label>
+                            <div className="space-y-2">
+                                {item.publishResults && item.publishResults.length > 0 ? (
+                                    item.publishResults.map((r) => (
+                                        <div key={r.id} className="flex items-center justify-between text-sm p-2 rounded-md bg-muted/40 border border-transparent hover:border-border transition-colors">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                                <a
+                                                    href={r.tweetUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-blue-600 hover:underline truncate max-w-[140px]"
+                                                >
+                                                    查看推文
+                                                </a>
+                                            </div>
+                                            <div className="text-[10px] text-muted-foreground">
+                                                {format(new Date(r.publishedAt), "MM/dd HH:mm")}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-xs text-muted-foreground py-2 text-center">暂无发布记录</div>
+                                )}
                             </div>
                         </div>
                     </div>

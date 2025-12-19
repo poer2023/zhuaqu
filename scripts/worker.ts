@@ -35,7 +35,6 @@ const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS || "2000",
 // ==================== State ====================
 
 let currentStepId: string | null = null
-let _currentJobId: string | null = null
 let heartbeatTimer: NodeJS.Timeout | null = null
 let isShuttingDown = false
 
@@ -235,7 +234,6 @@ async function main() {
       console.log(
         `[worker] step claimed: ${step.id} (${step.type}) job=${step.job.id} type=${step.job.type}`
       )
-      _currentJobId = step.job.id
       startHeartbeat(step.id)
 
       try {
@@ -250,7 +248,6 @@ async function main() {
         }
       } finally {
         stopHeartbeat()
-        _currentJobId = null
       }
 
       continue

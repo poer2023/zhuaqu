@@ -66,7 +66,7 @@ interface PublishState {
     resumeQueue: (workspaceId: string) => Promise<void>
 }
 
-export const usePublishStore = create<PublishState>()((set, get) => ({
+export const usePublishStore = create<PublishState>()((set) => ({
     // 初始状态
     jobs: [],
     queuePaused: false,

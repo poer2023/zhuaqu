@@ -1,11 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Loader2, FolderOpen, Tag, Pencil } from "lucide-react"
+import { Plus, Trash2, Loader2, FolderOpen, Tag } from "lucide-react"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 interface Pool {
@@ -31,13 +30,7 @@ export function PoolsTagsSettings() {
     const [isCreatingPool, setIsCreatingPool] = useState(false)
     const [isCreatingTag, setIsCreatingTag] = useState(false)
 
-    useEffect(() => {
-        if (currentWorkspaceId) {
-            fetchData()
-        }
-    }, [currentWorkspaceId])
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!currentWorkspaceId) return
         setIsLoading(true)
         try {
@@ -58,7 +51,13 @@ export function PoolsTagsSettings() {
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [currentWorkspaceId])
+
+    useEffect(() => {
+        if (currentWorkspaceId) {
+            fetchData()
+        }
+    }, [currentWorkspaceId, fetchData])
 
     const handleCreatePool = async () => {
         if (!newPoolName.trim() || !currentWorkspaceId) return

@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma"
 import { AppError } from "@/server/errors"
-import { markStepSucceeded, markStepFailed } from "@/server/orchestrator/orchestrator"
+import { markStepSucceeded } from "@/server/orchestrator/orchestrator"
 import { appendStepLog } from "@/server/orchestrator/stepEvents"
 
 // ==================== Types ====================

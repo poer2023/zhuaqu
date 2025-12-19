@@ -98,6 +98,9 @@ export async function ingestTweetUrl(args: {
   notes?: string | null
   tagIds?: string[]
   mediaMode?: "link" | "download"
+  options?: {
+    ignoreReplies?: boolean
+  }
 }): Promise<IngestOutcome> {
   const parsed = parseTweetUrl(args.url)
   if (!parsed) {
@@ -106,6 +109,23 @@ export async function ingestTweetUrl(args: {
 
   const mediaMode = args.mediaMode === "download" ? "download" : "link"
   const tagIds = Array.isArray(args.tagIds) ? args.tagIds : []
+
+  // 1. Fetch workspace settings for blacklist
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: args.workspaceId },
+    select: { settings: true },
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settings = (workspace?.settings as any) || {}
+  const blacklist = settings.blacklist || {}
+  const blockedAuthors = (Array.isArray(blacklist.authors) ? blacklist.authors : []).map((a: string) => a.toLowerCase().replace('@', ''))
+  const blockedKeywords = Array.isArray(blacklist.keywords) ? blacklist.keywords : []
+
+  // 2. Pre-check author from URL
+  if (parsed.authorHandle && blockedAuthors.includes(parsed.authorHandle.toLowerCase())) {
+    return { outcome: "failed", code: "BLOCKED_BY_RULE", error: `Author @${parsed.authorHandle} is blacklisted` }
+  }
 
   const existing = await prisma.contentItem.findUnique({
     where: { workspaceId_sourceId: { workspaceId: args.workspaceId, sourceId: parsed.tweetId } },
@@ -144,6 +164,22 @@ export async function ingestTweetUrl(args: {
 
     const authorHandle = extracted.authorHandle ?? parsed.authorHandle ?? "unknown"
     const textOriginal = extracted.text || ""
+
+    // 3. Post-check author and keywords
+    if (blockedAuthors.includes(authorHandle.toLowerCase().replace('@', ''))) {
+      return { outcome: "failed", code: "BLOCKED_BY_RULE", error: `Author @${authorHandle} is blacklisted` }
+    }
+
+    // 4. Check Replies
+    if (args.options?.ignoreReplies && "isReply" in extracted && extracted.isReply) {
+      return { outcome: "failed", code: "SKIPPED_REPLY", error: "Skipped reply tweet" }
+    }
+
+    for (const keyword of blockedKeywords) {
+      if (textOriginal.toLowerCase().includes(keyword.toLowerCase())) {
+        return { outcome: "failed", code: "BLOCKED_BY_RULE", error: `Content contains blocked keyword: ${keyword}` }
+      }
+    }
 
     const media: Array<Record<string, unknown>> = []
 

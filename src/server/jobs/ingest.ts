@@ -14,6 +14,18 @@ function getMediaMode(options: unknown): "link" | "download" {
   return mode === "download" ? "download" : "link"
 }
 
+function getThreadMode(options: unknown): "single" | "thread" {
+  if (!options || typeof options !== "object") return "single"
+  const opts = options as Record<string, unknown>
+  return opts.threadMode === "thread" ? "thread" : "single"
+}
+
+function getQuoteMode(options: unknown): "ignore" | "follow" {
+  if (!options || typeof options !== "object") return "ignore"
+  const opts = options as Record<string, unknown>
+  return opts.quoteMode === "follow" ? "follow" : "ignore"
+}
+
 export async function runIngestJob(jobId: string): Promise<void> {
   const job = await prisma.ingestJob.findUnique({ where: { id: jobId } })
   if (!job) return
@@ -57,7 +69,22 @@ export async function runIngestJob(jobId: string): Promise<void> {
     })
   }
 
-  for (const rawUrl of urls) {
+  const threadMode = getThreadMode(job.options)
+  const quoteMode = getQuoteMode(job.options)
+
+  // Use a queue for URL processing to support dynamic expansion
+  const urlQueue = [...urls]
+  const processedUrls = new Set<string>()
+
+  for (let i = 0; i < urlQueue.length && i < 500; i++) { // Cap at 500 to prevent infinite loops
+    const rawUrl = urlQueue[i]
+
+    // Skip if already processed
+    if (processedUrls.has(rawUrl)) {
+      continue
+    }
+    processedUrls.add(rawUrl)
+
     const res = await ingestTweetUrl({
       workspaceId: job.workspaceId,
       poolId: job.poolId,
@@ -70,7 +97,39 @@ export async function runIngestJob(jobId: string): Promise<void> {
 
     if (res.outcome === "created") {
       succeeded++
-      await prisma.ingestJob.update({ where: { id: jobId }, data: { succeeded } })
+      await prisma.ingestJob.update({ where: { id: jobId }, data: { succeeded, total: urlQueue.length } })
+
+      // Thread expansion: if enabled, fetch the content item and check for replies in thread
+      if (threadMode === "thread" && res.contentItemId) {
+        const item = await prisma.contentItem.findUnique({
+          where: { id: res.contentItemId },
+          select: { rawJson: true }
+        })
+        if (item?.rawJson) {
+          const raw = item.rawJson as Record<string, unknown>
+          // Check if this tweet is part of a thread (has in_reply_to from same author)
+          const _conversationId = (raw as { conversationId?: string }).conversationId
+          const inReplyTo = (raw as { inReplyToStatusId?: string }).inReplyToStatusId
+          if (inReplyTo && !processedUrls.has(`https://x.com/i/status/${inReplyTo}`)) {
+            urlQueue.push(`https://x.com/i/status/${inReplyTo}`)
+          }
+        }
+      }
+
+      // Quote expansion: if enabled, extract quoted tweet URL
+      if (quoteMode === "follow" && res.contentItemId) {
+        const item = await prisma.contentItem.findUnique({
+          where: { id: res.contentItemId },
+          select: { rawJson: true }
+        })
+        if (item?.rawJson) {
+          const raw = item.rawJson as Record<string, unknown>
+          const quotedUrl = (raw as { quotedTweetUrl?: string }).quotedTweetUrl
+          if (quotedUrl && !processedUrls.has(quotedUrl)) {
+            urlQueue.push(quotedUrl)
+          }
+        }
+      }
       continue
     }
 
@@ -113,10 +172,10 @@ export async function runIngestJob(jobId: string): Promise<void> {
         error: done
           ? {}
           : ({
-              code: "INGEST_PARTIAL_FAILED",
-              message: `Ingest partially failed (${failed}/${urls.length})`,
-              at: new Date().toISOString(),
-            } as Prisma.InputJsonValue),
+            code: "INGEST_PARTIAL_FAILED",
+            message: `Ingest partially failed (${failed}/${urls.length})`,
+            at: new Date().toISOString(),
+          } as Prisma.InputJsonValue),
       },
     })
   }

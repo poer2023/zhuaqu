@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,8 +16,6 @@ import {
     Layers,
     Loader2,
     XCircle,
-    Play,
-    Pause,
     RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -27,14 +25,14 @@ import { useTranslations } from "@/stores/localeStore"
 
 // ==================== Types ====================
 
-type BatchProgress = {
+type _BatchProgress = {
     total: number
     succeeded: number
     failed: number
     pending: number
 }
 
-type JobStep = {
+type _JobStep = {
     id: string
     status: string
     outputRef?: { total?: number; succeeded?: number; failed?: number }

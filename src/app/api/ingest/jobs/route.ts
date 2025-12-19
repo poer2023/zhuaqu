@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { parseTweetUrl } from "@/server/x/parseTweetUrl"
 import { createJobWithSteps } from "@/server/orchestrator"
+import { errorResponse, ErrorCodes } from "@/lib/apiResponse"
 
 // GET /api/ingest/jobs - 获取入库任务列表
 export async function GET(request: NextRequest) {
@@ -27,9 +28,10 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ jobs })
     } catch (error) {
         console.error("Failed to fetch ingest jobs:", error)
-        return NextResponse.json(
-            { error: "Failed to fetch ingest jobs" },
-            { status: 500 }
+        return errorResponse(
+            ErrorCodes.DATABASE_ERROR,
+            "Failed to fetch ingest jobs",
+            500
         )
     }
 }
