@@ -336,7 +336,8 @@
     async function loadPools() {
         try {
             const res = await fetch(`${API_BASE}/api/workspaces`);
-            const workspaces = await res.json();
+            const data = await res.json();
+            const workspaces = data.workspaces || data;
 
             const select = document.querySelector('#zhaqu-pool-select');
             select.innerHTML = '<option value="">Select Pool...</option>';
@@ -403,7 +404,14 @@
 
     // Submit selected tweets
     async function submitSelected() {
-        if (selectedTweets.size === 0 || !settings.poolId) return;
+        if (selectedTweets.size === 0) {
+            showStatus('Please select at least one tweet', 'error');
+            return;
+        }
+        if (!settings.poolId) {
+            showStatus('Please select a Pool first', 'error');
+            return;
+        }
 
         const urls = Array.from(selectedTweets.values()).map(t => t.url);
         showStatus(`Importing ${urls.length} tweets...`);
