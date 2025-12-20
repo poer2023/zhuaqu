@@ -125,8 +125,17 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // 创建发布任务
-        const scheduledAtDate = scheduledAt ? new Date(scheduledAt) : null
+        // OPT-L4: Validate scheduledAt date before using
+        let scheduledAtDate: Date | null = null
+        if (scheduledAt) {
+            scheduledAtDate = new Date(scheduledAt)
+            if (isNaN(scheduledAtDate.getTime())) {
+                return NextResponse.json(
+                    { error: "Invalid scheduledAt date format" },
+                    { status: 400 }
+                )
+            }
+        }
         const scheduledKey = scheduledAtDate ? scheduledAtDate.toISOString() : "immediate"
         const resolvedMode = mode === "thread" ? "thread" : "single"
 

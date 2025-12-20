@@ -213,7 +213,6 @@ export default function RewritePage({
         }
     }
 
-    const _selectedVersion = item?.rewriteVersions?.find(v => v.id === selectedVersionId)
 
     if (isLoading) {
         return (

@@ -123,7 +123,7 @@ export default function ContentDetailPage({
     params: Promise<{ id: string }>
 }) {
     const { id } = use(params)
-    const { t } = useTranslations()
+    useTranslations() // Hook called but t not used in this component
     const router = useRouter()
     const searchParams = useSearchParams()
 
@@ -485,6 +485,7 @@ export default function ContentDetailPage({
                                             {m.type === "video" ? (
                                                 m.thumbnailUrl ? (
                                                     <div className="relative w-full h-full">
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
                                                         <img
                                                             src={m.thumbnailUrl}
                                                             alt=""
@@ -504,6 +505,7 @@ export default function ContentDetailPage({
                                                     </div>
                                                 )
                                             ) : (
+                                                // eslint-disable-next-line @next/next/no-img-element
                                                 <img
                                                     src={m.directUrl || m.sourceUrl}
                                                     alt=""

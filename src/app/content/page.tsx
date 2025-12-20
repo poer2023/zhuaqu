@@ -22,9 +22,6 @@ import {
     Loader2,
     ExternalLink,
     RefreshCw,
-    CheckCircle2,
-    AlertCircle,
-    Clock,
     Send,
     PenTool,
     Heart,
@@ -81,7 +78,6 @@ interface ContentItem {
     notes?: string
     createdAt: string
     updatedAt: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rawJson?: any
     approvedRewriteVersionId?: string
@@ -161,42 +157,7 @@ function ContentPageInner() {
         router.push(`/content/${item.id}?from=${returnUrl}`)
     }
 
-    const _getStatusBadge = (status: string) => {
-        const normalized = status?.toUpperCase() || "NONE"
-        const colors: Record<string, string> = {
-            READY: "bg-green-500/10 text-green-500 border-green-500/20",
-            PENDING: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-            FETCHING: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-            FAILED: "bg-red-500/10 text-red-500 border-red-500/20",
-            NONE: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-            QUEUED: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-            RUNNING: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-            NEEDS_REVIEW: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-            APPROVED: "bg-green-500/10 text-green-500 border-green-500/20",
-            NOT_PUBLISHED: "bg-zinc-500/10 text-zinc-500 border-zinc-500/20",
-            PUBLISHED: "bg-green-500/10 text-green-500 border-green-500/20",
-            SCHEDULED: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-        }
 
-        const icons: Record<string, React.ReactNode> = {
-            READY: <CheckCircle2 className="h-2.5 w-2.5" />,
-            PENDING: <Clock className="h-2.5 w-2.5" />,
-            FAILED: <AlertCircle className="h-2.5 w-2.5" />,
-            APPROVED: <CheckCircle2 className="h-2.5 w-2.5" />,
-            PUBLISHED: <Send className="h-2.5 w-2.5" />,
-            NEEDS_REVIEW: <PenTool className="h-2.5 w-2.5" />,
-        }
-
-        return (
-            <Badge
-                variant="outline"
-                className={cn("text-[10px] px-1.5 py-0.5 h-auto gap-1 font-medium border", colors[normalized] || colors.NONE)}
-            >
-                {icons[normalized]}
-                {normalized.replace(/_/g, " ")}
-            </Badge>
-        )
-    }
 
     const formatNumber = (num?: number) => {
         if (!num) return "0"
@@ -577,7 +538,6 @@ function ContentPageInner() {
                                 // Extract counts with fallbacks
                                 const likeCount = graphqlLegacy.favorite_count ?? ytdlp.like_count ?? ytdlp.favorite_count ?? 0
                                 const replyCount = graphqlLegacy.reply_count ?? ytdlp.reply_count ?? 0
-                                const _repostCount = graphqlLegacy.retweet_count ?? graphqlLegacy.quote_count ?? ytdlp.repost_count ?? ytdlp.retweet_count ?? 0
                                 const viewCount = graphqlResult.views?.count ?? ytdlp.view_count ?? 0
 
                                 // Author info
@@ -599,6 +559,7 @@ function ContentPageInner() {
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <div className="w-9 h-9 rounded-full bg-accent/50 overflow-hidden flex-shrink-0 border">
                                                     {authorAvatar ? (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
                                                         <img
                                                             src={authorAvatar}
                                                             alt={authorName}
@@ -695,6 +656,7 @@ function ContentPageInner() {
                                                         >
                                                             {m.type === 'video' ? (
                                                                 <div className="relative w-full h-full">
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                                                     <img
                                                                         src={m.thumbnailUrl || m.url}
                                                                         alt=""
@@ -709,6 +671,7 @@ function ContentPageInner() {
                                                                     </div>
                                                                 </div>
                                                             ) : (
+                                                                /* eslint-disable-next-line @next/next/no-img-element */
                                                                 <img
                                                                     src={m.url}
                                                                     alt=""

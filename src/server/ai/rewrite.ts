@@ -1,13 +1,10 @@
-import OpenAI from "openai"
+/**
+ * AI Content Rewriting Module
+ * Refactored to use Vercel AI SDK for unified model access
+ */
 
-let openaiClient: OpenAI | null = null
-
-function getOpenAIClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY?.trim()
-  if (!apiKey) return null
-  if (!openaiClient) openaiClient = new OpenAI({ apiKey })
-  return openaiClient
-}
+import { generateText, streamText } from "ai"
+import { getModel, isAIAvailable, getAvailableProvider } from "./ai-provider"
 
 export type RewriteParams = {
   targetPersona?: string
@@ -115,34 +112,50 @@ export function calculateSimilarity(text1: string, text2: string): number {
   return intersection.size / union.size
 }
 
+/**
+ * Generate rewritten text using AI SDK
+ */
 export async function generateRewriteText(originalText: string, params: RewriteParams): Promise<string> {
-  const openai = getOpenAIClient()
-  if (!openai) return generateMockRewrite(originalText, params)
+  if (!isAIAvailable()) {
+    return generateMockRewrite(originalText, params)
+  }
 
-  const systemPrompt = buildSystemPrompt(params)
-  const userPrompt = buildUserPrompt(originalText, params)
+  const provider = getAvailableProvider()
+  if (!provider) {
+    return generateMockRewrite(originalText, params)
+  }
 
-  const response = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.7,
-    max_tokens: 1000,
-  })
+  try {
+    const model = getModel(provider)
+    const systemPrompt = buildSystemPrompt(params)
+    const userPrompt = buildUserPrompt(originalText, params)
 
-  return response.choices[0]?.message?.content || generateMockRewrite(originalText, params)
+    const result = await generateText({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+    })
+
+    return result.text || generateMockRewrite(originalText, params)
+  } catch (error) {
+    console.error("AI rewrite error:", error)
+    return generateMockRewrite(originalText, params)
+  }
 }
 
+/**
+ * Stream rewritten text using AI SDK
+ */
 export async function streamRewriteText(args: {
   originalText: string
   params: RewriteParams
   onDelta: (delta: string) => Promise<void> | void
   flushIntervalMs?: number
 }): Promise<{ text: string }> {
-  const openai = getOpenAIClient()
-  if (!openai) {
+  if (!isAIAvailable()) {
     const mock = generateMockRewrite(args.originalText, args.params)
     for (const ch of mock.split("")) {
       await args.onDelta(ch)
@@ -151,28 +164,46 @@ export async function streamRewriteText(args: {
     return { text: mock }
   }
 
-  const systemPrompt = buildSystemPrompt(args.params)
-  const userPrompt = buildUserPrompt(args.originalText, args.params)
-
-  const stream = await openai.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    stream: true,
-    temperature: 0.7,
-    max_tokens: 1000,
-  })
-
-  let fullText = ""
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content || ""
-    if (!content) continue
-    fullText += content
-    await args.onDelta(content)
+  const provider = getAvailableProvider()
+  if (!provider) {
+    const mock = generateMockRewrite(args.originalText, args.params)
+    for (const ch of mock.split("")) {
+      await args.onDelta(ch)
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    return { text: mock }
   }
 
-  return { text: fullText }
-}
+  try {
+    const model = getModel(provider)
+    const systemPrompt = buildSystemPrompt(args.params)
+    const userPrompt = buildUserPrompt(args.originalText, args.params)
 
+    const result = await streamText({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+    })
+
+    let fullText = ""
+    for await (const chunk of result.textStream) {
+      if (chunk) {
+        fullText += chunk
+        await args.onDelta(chunk)
+      }
+    }
+
+    return { text: fullText }
+  } catch (error) {
+    console.error("AI stream error:", error)
+    const mock = generateMockRewrite(args.originalText, args.params)
+    for (const ch of mock.split("")) {
+      await args.onDelta(ch)
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    return { text: mock }
+  }
+}

@@ -119,7 +119,8 @@ export async function runSyncJob(args: { syncJobId: string; orchestrationJobId: 
   const failures: Failure[] = []
   const maxFailurePreview = 50
 
-  const updateEvery = 5
+  // OPT-M5: Increased from 5 to 20 to reduce DB write pressure
+  const updateEvery = 20
   const statusCheckEvery = 5
   let stop: "PAUSED" | "CANCELLED" | null = null
 

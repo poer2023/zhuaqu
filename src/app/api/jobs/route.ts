@@ -54,28 +54,24 @@ export async function GET(request: NextRequest) {
       where.contentItems = { some: { id: contentItemId } }
     }
 
-    // 过滤有失败 step 的 jobs
+    // OPT-M3: Merge step filters into a single condition to avoid overwriting
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stepConditions: any[] = []
     if (hasFailed) {
-      where.steps = { some: { status: "FAILED" } }
+      stepConditions.push({ status: "FAILED" })
     }
-
-    // 过滤有错误的 steps
     if (hasError) {
-      where.steps = {
-        some: {
-          error: { not: {} },
-        },
-      }
+      stepConditions.push({ error: { not: {} } })
     }
-
-    // 过滤特定 step 类型的 jobs
     if (stepType) {
+      stepConditions.push({ type: stepType })
+    }
+    // Apply combined step filter
+    if (stepConditions.length > 0) {
       where.steps = {
-        ...where.steps,
-        some: {
-          ...(where.steps?.some || {}),
-          type: stepType,
-        },
+        some: stepConditions.length === 1
+          ? stepConditions[0]
+          : { AND: stepConditions }
       }
     }
 

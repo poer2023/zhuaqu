@@ -23,22 +23,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useRewriteStore } from "@/stores/rewriteStore"
 import { useTranslations } from "@/stores/localeStore"
 
-// ==================== Types ====================
-
-type _BatchProgress = {
-    total: number
-    succeeded: number
-    failed: number
-    pending: number
-}
-
-type _JobStep = {
-    id: string
-    status: string
-    outputRef?: { total?: number; succeeded?: number; failed?: number }
-}
-
-// ==================== Progress Panel ====================
+// ==================== Progress Panel ======================================
 
 function BatchProgressPanel({
     batch,
@@ -119,7 +104,7 @@ function BatchProgressPanel({
 // ==================== Main Page ====================
 
 export default function RewritePage() {
-    const { t } = useTranslations()
+    useTranslations() // Hook called but t not used
     const [editedTextByVersionId, setEditedTextByVersionId] = useState<Record<string, string>>({})
 
     // Zustand stores
@@ -131,7 +116,6 @@ export default function RewritePage() {
         isLoading,
         isSubmitting,
         isStreaming,
-        streamingText,
         fetchBatches,
         getBatch,
         setCurrentVersionIndex,

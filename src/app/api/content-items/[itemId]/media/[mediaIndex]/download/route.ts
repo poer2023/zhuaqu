@@ -5,6 +5,7 @@ import { stat } from "node:fs/promises"
 import { Readable } from "node:stream"
 
 import prisma from "@/lib/prisma"
+import { createJobWithSteps } from "@/server/orchestrator"
 import { getMediaDirAbs, resolveProjectPath } from "@/server/media/localStore"
 import type { Prisma } from "@prisma/client"
 
@@ -47,38 +48,77 @@ export async function POST(
     error: null,
   }
 
-  await prisma.contentItem.update({
-    where: { id: item.id },
-    data: {
-      media: media as Prisma.InputJsonValue,
-      captureStatus: "FETCHING",
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.contentItem.update({
+      where: { id: item.id },
+      data: {
+        media: media as Prisma.InputJsonValue,
+        captureStatus: "FETCHING",
+      },
+    })
+
+    const options = { mediaMode: "download", reason: "content_item_media_download", itemId: item.id, mediaIndex: index }
+
+    const ingestJob = await tx.ingestJob.create({
+      data: {
+        workspaceId: item.workspaceId,
+        poolId: item.poolId,
+        urls: [item.sourceUrl],
+        options,
+        tags: [],
+        notes: null,
+        status: "QUEUED",
+        total: 1,
+      },
+    })
+
+    const { job: orchestrationJob } = await createJobWithSteps(
+      {
+        type: "INGEST_URL",
+        workspaceId: item.workspaceId,
+        poolId: item.poolId,
+        config: {
+          ingestJobId: ingestJob.id,
+          urls: [item.sourceUrl],
+          options,
+          tags: [],
+          notes: null,
+        },
+        steps: [
+          {
+            type: "CAPTURE",
+            maxAttempts: 3,
+            inputRef: { ingestJobId: ingestJob.id },
+          },
+        ],
+      },
+      tx
+    )
+
+    const updatedIngestJob = await tx.ingestJob.update({
+      where: { id: ingestJob.id },
+      data: { jobId: orchestrationJob.id },
+    })
+
+    await tx.auditLog.create({
+      data: {
+        workspaceId: item.workspaceId,
+        contentItemId: item.id,
+        action: "INGEST_CREATED",
+        details: {
+          jobId: updatedIngestJob.id,
+          orchestrationJobId: orchestrationJob.id,
+          reason: "content_item_media_download",
+          mediaIndex: index,
+        },
+        actor: "owner",
+      },
+    })
+
+    return { ingestJob: updatedIngestJob, orchestrationJobId: orchestrationJob.id }
   })
 
-  const job = await prisma.ingestJob.create({
-    data: {
-      workspaceId: item.workspaceId,
-      poolId: item.poolId,
-      urls: [item.sourceUrl],
-      options: { mediaMode: "download", reason: "content_item_media_download", itemId: item.id, mediaIndex: index },
-      tags: [],
-      notes: null,
-      status: "QUEUED",
-      total: 1,
-    },
-  })
-
-  await prisma.auditLog.create({
-    data: {
-      workspaceId: item.workspaceId,
-      contentItemId: item.id,
-      action: "INGEST_CREATED",
-      details: { jobId: job.id, reason: "content_item_media_download", mediaIndex: index },
-      actor: "owner",
-    },
-  })
-
-  return Response.json({ ok: true, job })
+  return Response.json({ ok: true, job: result.ingestJob, orchestrationJobId: result.orchestrationJobId })
 }
 
 export async function GET(

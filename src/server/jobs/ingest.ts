@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
 import { ingestTweetUrl } from "@/server/ingest/ingestTweet"
+import { jobLogger } from "@/lib/logger"
+import { withRetry, isRetryableError } from "@/lib/retry"
 
 function getStringArray(json: unknown): string[] {
   if (!Array.isArray(json)) return []
@@ -29,6 +31,9 @@ function getQuoteMode(options: unknown): "ignore" | "follow" {
 export async function runIngestJob(jobId: string): Promise<void> {
   const job = await prisma.ingestJob.findUnique({ where: { id: jobId } })
   if (!job) return
+
+  const log = jobLogger(jobId, "INGEST")
+  log.info({ workspaceId: job.workspaceId, poolId: job.poolId }, "Starting ingest job")
 
   const urls = getStringArray(job.urls)
   const mediaMode = getMediaMode(job.options)
@@ -76,7 +81,11 @@ export async function runIngestJob(jobId: string): Promise<void> {
   const urlQueue = [...urls]
   const processedUrls = new Set<string>()
 
-  for (let i = 0; i < urlQueue.length && i < 500; i++) { // Cap at 500 to prevent infinite loops
+  // OPT-M2: Cap at 500 and track if truncated
+  const MAX_URLS = 500
+  const truncated = urlQueue.length > MAX_URLS
+
+  for (let i = 0; i < urlQueue.length && i < MAX_URLS; i++) {
     const rawUrl = urlQueue[i]
 
     // Skip if already processed
@@ -85,18 +94,39 @@ export async function runIngestJob(jobId: string): Promise<void> {
     }
     processedUrls.add(rawUrl)
 
-    const res = await ingestTweetUrl({
-      workspaceId: job.workspaceId,
-      poolId: job.poolId,
-      jobId: job.jobId ?? null,
-      url: rawUrl,
-      notes: job.notes ?? null,
-      tagIds,
-      mediaMode,
+    log.debug({ url: rawUrl, index: i }, "Processing URL")
+
+    // Use retry wrapper for network resilience
+    const res = await withRetry(
+      () => ingestTweetUrl({
+        workspaceId: job.workspaceId,
+        poolId: job.poolId,
+        jobId: job.jobId ?? null,
+        url: rawUrl,
+        notes: job.notes ?? null,
+        tagIds,
+        mediaMode,
+      }),
+      {
+        maxAttempts: 3,
+        baseDelayMs: 1000,
+        onRetry: (attempt, error, delayMs) => {
+          log.warn({ url: rawUrl, attempt, error: String(error), delayMs }, "Retrying URL ingest")
+        }
+      }
+    ).catch((error) => {
+      // Return failure result for non-retryable errors or exhausted retries
+      log.error({ url: rawUrl, error: String(error) }, "URL ingest failed after retries")
+      return {
+        outcome: "failed" as const,
+        code: isRetryableError(error) ? "RETRY_EXHAUSTED" : "NON_RETRYABLE",
+        error: String(error),
+      }
     })
 
     if (res.outcome === "created") {
       succeeded++
+      log.debug({ url: rawUrl, contentItemId: res.contentItemId }, "URL ingested successfully")
       await prisma.ingestJob.update({ where: { id: jobId }, data: { succeeded, total: urlQueue.length } })
 
       // Thread expansion: if enabled, fetch the content item and check for replies in thread
@@ -108,7 +138,6 @@ export async function runIngestJob(jobId: string): Promise<void> {
         if (item?.rawJson) {
           const raw = item.rawJson as Record<string, unknown>
           // Check if this tweet is part of a thread (has in_reply_to from same author)
-          const _conversationId = (raw as { conversationId?: string }).conversationId
           const inReplyTo = (raw as { inReplyToStatusId?: string }).inReplyToStatusId
           if (inReplyTo && !processedUrls.has(`https://x.com/i/status/${inReplyTo}`)) {
             urlQueue.push(`https://x.com/i/status/${inReplyTo}`)
@@ -168,7 +197,8 @@ export async function runIngestJob(jobId: string): Promise<void> {
       data: {
         status: done ? "SUCCEEDED" : "FAILED",
         completedAt: new Date(),
-        outputRef: { total: urls.length, succeeded, failed, deduped } as Prisma.InputJsonValue,
+        // OPT-M2: Include truncated flag in output for visibility
+        outputRef: { total: Math.min(urlQueue.length, MAX_URLS), succeeded, failed, deduped, truncated } as Prisma.InputJsonValue,
         error: done
           ? {}
           : ({
@@ -184,8 +214,13 @@ export async function runIngestJob(jobId: string): Promise<void> {
     data: {
       workspaceId: job.workspaceId,
       action: status === "DONE" ? "INGEST_COMPLETED" : "INGEST_FAILED",
-      details: { jobId, total: urls.length, succeeded, failed, deduped },
+      // OPT-M2: Include truncated in audit log
+      details: { jobId, total: Math.min(urlQueue.length, MAX_URLS), succeeded, failed, deduped, truncated },
       actor: "system",
     },
   })
+
+  // OPT-M2: Log truncated status for debugging
+  const processedTotal = Math.min(urlQueue.length, MAX_URLS)
+  log.info({ status, succeeded, failed, deduped, total: processedTotal, truncated }, "Ingest job completed")
 }

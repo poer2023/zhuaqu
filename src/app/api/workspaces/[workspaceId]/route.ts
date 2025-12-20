@@ -57,13 +57,14 @@ export async function PATCH(
         const body = await request.json()
         const { name, description, defaultPoolId, settings } = body
 
+        // OPT-L3: Use !== undefined instead of truthy to allow clearing fields
         const workspace = await prisma.workspace.update({
             where: { id: workspaceId },
             data: {
-                ...(name && { name }),
+                ...(name !== undefined && { name }),
                 ...(description !== undefined && { description }),
-                ...(defaultPoolId && { defaultPoolId }),
-                ...(settings && { settings }),
+                ...(defaultPoolId !== undefined && { defaultPoolId }),
+                ...(settings !== undefined && { settings }),
             }
         })
 

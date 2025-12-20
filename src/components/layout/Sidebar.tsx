@@ -43,6 +43,7 @@ import {
     Search,
     Bell,
     Loader2,
+    BarChart3,
     type LucideIcon
 } from "lucide-react"
 
@@ -53,6 +54,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+    { href: "/dashboard", labelKey: "dashboard", icon: BarChart3 },
     { href: "/content", labelKey: "content", icon: LayoutGrid },
     { href: "/publish", labelKey: "publish", icon: Send },
     { href: "/automation", labelKey: "automation", icon: Zap },

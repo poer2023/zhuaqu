@@ -17,9 +17,10 @@ export async function GET(request: NextRequest) {
         const publishStatus = searchParams.get("publishStatus")
         const mediaType = searchParams.get("mediaType")
 
-        // 分页
-        const page = parseInt(searchParams.get("page") || "1")
-        const limit = parseInt(searchParams.get("limit") || "20")
+        // 分页 (OPT-M6: clamp limit to max 100)
+        const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+        const MAX_LIMIT = 100
+        const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get("limit") || "20")))
         const skip = (page - 1) * limit
 
         // 构建查询条件
@@ -53,14 +54,18 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // 媒体类型筛选
+        // 媒体类型筛选 (OPT-H2: use Prisma-compatible JSON filter)
+        // Note: Prisma JsonFilter.path only accepts string[] for Postgres, not JSONPath
+        // Using array_contains for type-safe filtering
         if (mediaType) {
             if (mediaType === "none") {
                 where.media = { equals: [] }
             } else if (mediaType === "image") {
-                where.media = { path: "$[*].type", string_contains: "image" }
+                // Filter for items that have at least one image media
+                where.media = { array_contains: [{ type: "image" }] }
             } else if (mediaType === "video") {
-                where.media = { path: "$[*].type", string_contains: "video" }
+                // Filter for items that have at least one video media
+                where.media = { array_contains: [{ type: "video" }] }
             }
         }
 

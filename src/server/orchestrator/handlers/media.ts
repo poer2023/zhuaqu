@@ -1,5 +1,5 @@
 import { AppError } from "@/server/errors"
-import { markStepSucceeded, markStepSkipped } from "@/server/orchestrator/orchestrator"
+import { markStepSkipped } from "@/server/orchestrator/orchestrator"
 import { appendStepLog, appendStepProgress } from "@/server/orchestrator/stepEvents"
 
 // ==================== Types ====================
@@ -33,35 +33,28 @@ export async function handleMediaStep(step: Step & { job: Job }): Promise<void> 
         return
     }
 
-    const results: Array<{ url: string; status: string; localPath?: string }> = []
+    // OPT-L2: This is a placeholder implementation - mark as skipped until properly implemented
+    // TODO: Implement actual download and transcode logic:
+    // 1. Download media files
+    // 2. Store to R2/S3
+    // 3. Optional: video transcode, image compression
+    // 4. Update ContentItem media references
+
+    const results: Array<{ url: string; status: string; reason?: string }> = []
 
     for (let i = 0; i < mediaUrls.length; i++) {
         const url = mediaUrls[i] as string
         await appendStepProgress(step.id, i + 1, mediaUrls.length, `Processing ${url}`)
 
-        try {
-            // TODO: 实际的下载和转码逻辑
-            // 这里只是占位，实际实现需要：
-            // 1. 下载媒体文件
-            // 2. 存储到 R2/S3
-            // 3. 可选：视频转码、图片压缩
-            // 4. 更新 ContentItem 的媒体引用
-
-            await appendStepLog(step.id, `Processed media: ${url}`)
-            results.push({ url, status: "downloaded" })
-        } catch (e) {
-            await appendStepLog(step.id, `Failed to process ${url}: ${e}`, "error")
-            results.push({ url, status: "failed" })
-        }
+        // Mark as skipped since not implemented
+        await appendStepLog(step.id, `Skipped media (not implemented): ${url}`, "warn")
+        results.push({ url, status: "skipped", reason: "not_implemented" })
     }
 
-    const succeeded = results.filter((r) => r.status === "downloaded").length
-    const failed = results.filter((r) => r.status === "failed").length
-
-    await markStepSucceeded(step.id, {
+    await markStepSkipped(step.id, {
+        reason: "media_handler_not_implemented",
         total: mediaUrls.length,
-        succeeded,
-        failed,
+        skipped: results.length,
         results,
     } as JsonValue)
 }

@@ -8,8 +8,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((r) => setTimeout(r, ms))
+  if (signal.aborted) return Promise.resolve()
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
 }
 
 function hashParams(params: unknown): string {
@@ -104,40 +116,58 @@ export async function POST(request: NextRequest) {
   }
 
   const encoder = new TextEncoder()
+  let aborted = false
   const readable = new ReadableStream({
     async start(controller) {
-      let sentLen = 0
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ jobId: job.id, stepId })}\n\n`))
-
-      while (true) {
-        const step = await prisma.step.findUnique({
-          where: { id: stepId },
-          select: { status: true, outputRef: true, error: true },
-        })
-        if (!step) break
-
-        const text = extractTextFromOutputRef(step.outputRef)
-        if (text.length > sentLen) {
-          const delta = text.slice(sentLen)
-          sentLen = text.length
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: delta })}\n\n`))
-        }
-
-        if (step.status === "SUCCEEDED" || step.status === "SKIPPED") {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
-          break
-        }
-
-        if (step.status === "FAILED") {
-          const message = extractErrorMessage(step.error) || "Rewrite failed"
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`))
-          break
-        }
-
-        await sleep(250)
+      const abortSignal = request.signal
+      const onAbort = () => {
+        aborted = true
       }
 
-      controller.close()
+      if (abortSignal) {
+        abortSignal.addEventListener("abort", onAbort)
+      }
+
+      try {
+        let sentLen = 0
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ jobId: job.id, stepId })}\n\n`))
+
+        while (!aborted) {
+          const step = await prisma.step.findUnique({
+            where: { id: stepId },
+            select: { status: true, outputRef: true, error: true },
+          })
+          if (!step) break
+
+          const text = extractTextFromOutputRef(step.outputRef)
+          if (text.length > sentLen) {
+            const delta = text.slice(sentLen)
+            sentLen = text.length
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: delta })}\n\n`))
+          }
+
+          if (step.status === "SUCCEEDED" || step.status === "SKIPPED") {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
+            break
+          }
+
+          if (step.status === "FAILED") {
+            const message = extractErrorMessage(step.error) || "Rewrite failed"
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`))
+            break
+          }
+
+          await sleep(500, abortSignal)
+        }
+      } finally {
+        if (request.signal) {
+          request.signal.removeEventListener("abort", onAbort)
+        }
+        controller.close()
+      }
+    },
+    cancel() {
+      aborted = true
     },
   })
 
