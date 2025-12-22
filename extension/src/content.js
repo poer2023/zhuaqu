@@ -7,8 +7,8 @@
 (function () {
     'use strict';
 
-    // Configuration
-    const API_BASE = 'http://localhost:3000'; // Your ZhaQu backend
+    // Configuration - loaded from storage
+    let API_BASE = 'http://localhost:3000'; // Default, will be overridden
     const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 
     // State
@@ -23,6 +23,19 @@
     let availableTags = [];
     let isOnLikesPage = false;
     let isOnBookmarksPage = false;
+
+    // Load API base from storage
+    async function loadApiBase() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(['apiBase'], (result) => {
+                if (result.apiBase) {
+                    API_BASE = result.apiBase;
+                    console.log('ZhaQu: Using API base:', API_BASE);
+                }
+                resolve();
+            });
+        });
+    }
 
     // Icons
     const ICONS = {
@@ -562,14 +575,17 @@
     });
 
     // Initialize
-    function init() {
+    async function init() {
         if (document.querySelector('.zhaqu-toggle')) return;
+
+        // Load API base first
+        await loadApiBase();
 
         createToggleButton();
         createActionBar();
         observeTimeline();
 
-        console.log('ZhaQu Extension v1.1 initialized');
+        console.log('ZhaQu Extension v1.1 initialized with API:', API_BASE);
     }
 
     if (document.readyState === 'loading') {
