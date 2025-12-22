@@ -33,12 +33,12 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - MEDIA_DIR=/app/data/media
+      - WORKER_ROLE=all
     volumes:
       - media_data:/app/data/media
     ports:
       - "3344:3000"
-    command: >
-      sh -c "npx prisma migrate deploy && node server.js"
+    # 使用 Dockerfile CMD (scripts/start.sh) 启动 web + worker
 
 volumes:
   postgres_data:
