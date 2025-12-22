@@ -14,8 +14,9 @@ FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY prisma/schema.prisma ./prisma/
 
-# 安装所有依赖（用于构建）
-RUN npm ci --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
+# 增加 Node 内存限制，安装依赖
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 # ==================== 构建阶段 ====================
 FROM base AS builder
@@ -34,8 +35,9 @@ ENV DATABASE_URL=${DATABASE_URL}
 # 生成 Prisma Client
 RUN npx prisma generate
 
-# 构建 Next.js（启用缓存）
+# 构建 Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # ==================== 生产镜像 ====================
@@ -62,7 +64,7 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
-# 从构建阶段复制 node_modules（已包含 tsx 和全部依赖）
+# 从构建阶段复制 node_modules
 COPY --from=deps /app/node_modules ./node_modules
 
 # 创建数据目录
