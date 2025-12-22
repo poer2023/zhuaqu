@@ -1,32 +1,26 @@
-import { withAuth } from "next-auth/middleware"
+import { getToken } from "next-auth/jwt"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 
 // 开发模式下跳过认证检查
 const isAuthEnabled = process.env.AUTH_ENABLED === "true"
 
-export default withAuth(
-    function middleware(_req) {
-        // 如果认证未启用，直接放行
-        if (!isAuthEnabled) {
-            return NextResponse.next()
-        }
+export async function middleware(request: NextRequest) {
+    // 如果认证未启用，直接放行
+    if (!isAuthEnabled) {
         return NextResponse.next()
-    },
-    {
-        callbacks: {
-            authorized: ({ token }) => {
-                // 如果认证未启用，始终返回 true
-                if (!isAuthEnabled) {
-                    return true
-                }
-                return !!token
-            },
-        },
-        pages: {
-            signIn: "/login",
-        },
     }
-)
+
+    const token = await getToken({ req: request })
+
+    if (!token) {
+        const loginUrl = new URL("/login", request.url)
+        loginUrl.searchParams.set("callbackUrl", request.url)
+        return NextResponse.redirect(loginUrl)
+    }
+
+    return NextResponse.next()
+}
 
 // 配置需要保护的路由
 export const config = {
