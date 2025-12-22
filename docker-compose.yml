@@ -40,6 +40,40 @@ services:
     command: >
       sh -c "npx prisma migrate deploy && node server.js"
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-zhaqu}:${POSTGRES_PASSWORD:-zhaqu_password}@postgres:5432/${POSTGRES_DB:-zhaqu}?schema=public
+      - WORKER_ROLE=all
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MEDIA_DIR=/app/data/media
+    volumes:
+      - media_data:/app/data/media
+    command: >
+      sh -c "npx prisma generate && node --import tsx scripts/worker.ts"
+
+  watchdog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-zhaqu}:${POSTGRES_PASSWORD:-zhaqu_password}@postgres:5432/${POSTGRES_DB:-zhaqu}?schema=public
+    command: >
+      sh -c "npx prisma generate && node --import tsx src/server/orchestrator/watchdog.ts"
+
 volumes:
   postgres_data:
   media_data:

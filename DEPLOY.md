@@ -82,9 +82,50 @@ curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ### 3. 添加项目
 
 1. **添加 Git 仓库** → 连接你的 GitHub
-2. **新建项目** → 选择 Docker Compose
-3. **配置环境变量** → 填入数据库密码、API Key 等
-4. **部署** → 一键部署
+2. **新建项目** → 选择 **Docker Compose**
+3. **选择 docker-compose 文件** → `docker-compose.yml`
+4. **配置环境变量** → 见下表
+5. **部署** → 一键部署
+
+### 4. 环境变量配置 (重要!)
+
+在 Coolify 面板的 **Environment Variables** 中添加：
+
+| 变量名 | 必填 | 示例值 |
+|--------|------|--------|
+| `POSTGRES_USER` | ✅ | `zhaqu` |
+| `POSTGRES_PASSWORD` | ✅ | `your_strong_password` |
+| `POSTGRES_DB` | ✅ | `zhaqu` |
+| `NEXTAUTH_URL` | ✅ | `https://zhaqu.yourdomain.com` |
+| `NEXTAUTH_SECRET` | ✅ | `随机32位字符串` |
+| `GEMINI_API_KEY` | 可选 | `你的 Gemini API Key` |
+| `OPENAI_API_KEY` | 可选 | `你的 OpenAI API Key` |
+
+> 生成 NEXTAUTH_SECRET: `openssl rand -base64 32`
+
+### 5. 验证部署
+
+部署后确认以下 **4 个服务** 都在运行：
+
+| 服务 | 作用 | 日志关键字 |
+|------|------|-----------|
+| `postgres` | 数据库 | `database system is ready` |
+| `web` | Next.js 前端 | `Ready in` |
+| `worker` | 后台任务处理 | `[worker] started` |
+| `watchdog` | 超时任务恢复 | `watchdog started` |
+
+如果 worker 或 watchdog 没启动，后台任务将不会执行！
+
+### 6. 常见问题
+
+**Q: 页面能访问但抓取任务卡住？**
+A: 检查 worker 服务是否启动，查看 worker 日志。
+
+**Q: 数据库连接失败？**
+A: 确认 `POSTGRES_PASSWORD` 等变量设置正确，postgres 服务健康。
+
+**Q: 如何查看日志？**
+A: Coolify 面板 → 项目 → 服务 → Logs 标签页
 
 ### 优势
 

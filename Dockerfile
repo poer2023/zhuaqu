@@ -42,8 +42,9 @@ FROM base AS proddeps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-# 仅安装生产依赖
+# 安装生产依赖 + tsx（Worker/Watchdog 运行时需要）
 RUN npm install --omit=dev --legacy-peer-deps || npm install --omit=dev --legacy-peer-deps --force
+RUN npm install tsx --save-prod
 
 # ==================== 生产镜像 ====================
 FROM base AS runner
@@ -63,6 +64,9 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=proddeps /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 # 创建数据目录
 RUN mkdir -p /app/data/media && chown -R nextjs:nodejs /app
