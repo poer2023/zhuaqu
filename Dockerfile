@@ -2,20 +2,20 @@
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
 
-# 安装必要系统依赖（openssl 给 Prisma 用）
+# 安装必要系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ==================== 依赖安装阶段（含开发依赖，供构建用） ====================
+# ==================== 依赖安装阶段 ====================
 FROM base AS deps
 
-# 复制包管理文件
-COPY package.json ./
-COPY prisma ./prisma/
+# 只复制包管理文件 - 利用 Docker 缓存
+COPY package.json package-lock.json* ./
+COPY prisma/schema.prisma ./prisma/
 
-# 安装依赖（含 dev，用于构建）
-RUN npm install --legacy-peer-deps || npm install --legacy-peer-deps --force
+# 安装所有依赖（用于构建）
+RUN npm ci --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
 
 # ==================== 构建阶段 ====================
 FROM base AS builder
@@ -27,24 +27,16 @@ COPY --from=deps /app/node_modules ./node_modules
 # 复制源码
 COPY . .
 
-# 提供构建期可用的 DATABASE_URL，避免 prisma generate 报错
+# 提供构建期可用的 DATABASE_URL
 ARG DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
 ENV DATABASE_URL=${DATABASE_URL}
 
 # 生成 Prisma Client
 RUN npx prisma generate
 
-# 构建 Next.js
+# 构建 Next.js（启用缓存）
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
-
-# ==================== 生产依赖阶段（仅 prod 依赖，减小体积） ====================
-FROM base AS proddeps
-WORKDIR /app
-
-COPY package.json ./
-# 安装生产依赖 + tsx（Worker/Watchdog 运行时需要）
-RUN npm install --omit=dev --legacy-peer-deps || npm install --omit=dev --legacy-peer-deps --force
-RUN npm install tsx --save-prod
 
 # ==================== 生产镜像 ====================
 FROM base AS runner
@@ -61,13 +53,17 @@ RUN groupadd --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=proddeps /app/node_modules ./node_modules
+
+# 复制运行时需要的文件
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
+# 从构建阶段复制 node_modules（已包含 tsx 和全部依赖）
+COPY --from=deps /app/node_modules ./node_modules
 
 # 创建数据目录
 RUN mkdir -p /app/data/media && chown -R nextjs:nodejs /app
