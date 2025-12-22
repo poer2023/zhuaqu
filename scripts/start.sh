@@ -1,17 +1,15 @@
 #!/bin/sh
 # 启动脚本 - 同时运行 web 和 worker
-# 简化版：跳过数据库同步，直接启动服务
 
 echo "============================================"
 echo "[start] Zhaqu Container Starting..."
 echo "============================================"
 
-# 等待数据库就绪（简单检查）
+# 等待数据库连接
 echo "[start] Waiting for database connection..."
 sleep 3
 
 # 跳过 prisma db push - 表已经存在
-# 如果需要同步 schema，手动在 Terminal 执行: npx prisma db push
 echo "[start] Skipping database sync (tables should already exist)"
 
 # 确保 Prisma Client 已生成
@@ -28,6 +26,15 @@ echo "[start] Worker started with PID: $WORKER_PID"
 sleep 2
 
 # 启动 web server
+# Next.js standalone 模式下 server.js 在 .next/standalone/ 目录
 echo "[start] Starting web server on port $PORT..."
 echo "============================================"
-exec node server.js
+
+if [ -f ".next/standalone/server.js" ]; then
+    exec node .next/standalone/server.js
+elif [ -f "server.js" ]; then
+    exec node server.js
+else
+    # 如果没有 standalone，使用 npm start
+    exec npm start
+fi
