@@ -348,6 +348,7 @@
     // Load pools from API
     async function loadPools() {
         try {
+            console.log('ZhaQu: Loading pools from', API_BASE);
             const res = await fetch(`${API_BASE}/api/workspaces`);
             const data = await res.json();
             const workspaces = data.workspaces || data;
@@ -372,8 +373,10 @@
                 settings.poolId = poolId;
                 updateActionBar();
             });
+
+            console.log('ZhaQu: Loaded', workspaces.length, 'workspaces');
         } catch (e) {
-            console.error('ZhaQu: Failed to load pools', e);
+            console.error('ZhaQu: Failed to load pools from', API_BASE, e);
             showStatus('Failed to load pools', 'error');
         }
     }
