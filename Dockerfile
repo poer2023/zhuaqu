@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS deps
 
 # 复制包管理文件
-COPY package.json package-lock.json ./
+COPY package.json ./
 COPY prisma ./prisma/
 
 # 安装依赖（含 dev，用于构建）
@@ -41,7 +41,7 @@ RUN npm run build
 FROM base AS proddeps
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json ./
 # 安装生产依赖 + tsx（Worker/Watchdog 运行时需要）
 RUN npm install --omit=dev --legacy-peer-deps || npm install --omit=dev --legacy-peer-deps --force
 RUN npm install tsx --save-prod
