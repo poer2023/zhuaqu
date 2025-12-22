@@ -78,4 +78,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+# 使用启动脚本同时运行 web 和 worker
+CMD ["sh", "scripts/start.sh"]
