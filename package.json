@@ -3,9 +3,9 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 6666",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 6666",
     "lint": "eslint",
     "test": "npx tsx tests/orchestrator.test.ts && npx tsx tests/errors.test.ts && npx tsx tests/ai.test.ts && npx tsx tests/api.test.ts",
     "worker": "npx tsx scripts/worker.ts",
