@@ -1,5 +1,5 @@
-# Zhaqu Docker Compose 配置 (Coolify 版本)
-# 简化版本，只包含核心服务
+# Zhaqu Docker Compose 配置 (Coolify 简化版)
+# web 容器同时运行前端和 worker
 
 services:
   postgres:
@@ -33,12 +33,12 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - MEDIA_DIR=/app/data/media
+      - WORKER_ROLE=all
     volumes:
       - media_data:/app/data/media
     ports:
       - "3344:3000"
-    command: >
-      sh -c "npx prisma migrate deploy && node server.js"
+    # 使用 scripts/start.sh 同时启动 web 和 worker
 
 volumes:
   postgres_data:

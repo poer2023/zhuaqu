@@ -7,8 +7,8 @@
 (function () {
     'use strict';
 
-    // Configuration
-    const API_BASE = 'http://localhost:3000'; // Your ZhaQu backend
+    // Configuration - loaded from storage
+    let API_BASE = 'http://localhost:3000'; // Default, will be overridden
     const TWEET_SELECTOR = 'article[data-testid="tweet"]';
 
     // State
@@ -23,6 +23,19 @@
     let availableTags = [];
     let isOnLikesPage = false;
     let isOnBookmarksPage = false;
+
+    // Load API base from storage
+    async function loadApiBase() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(['apiBase'], (result) => {
+                if (result.apiBase) {
+                    API_BASE = result.apiBase;
+                    console.log('ZhaQu: Using API base:', API_BASE);
+                }
+                resolve();
+            });
+        });
+    }
 
     // Icons
     const ICONS = {
@@ -335,6 +348,7 @@
     // Load pools from API
     async function loadPools() {
         try {
+            console.log('ZhaQu: Loading pools from', API_BASE);
             const res = await fetch(`${API_BASE}/api/workspaces`);
             const data = await res.json();
             const workspaces = data.workspaces || data;
@@ -359,8 +373,10 @@
                 settings.poolId = poolId;
                 updateActionBar();
             });
+
+            console.log('ZhaQu: Loaded', workspaces.length, 'workspaces');
         } catch (e) {
-            console.error('ZhaQu: Failed to load pools', e);
+            console.error('ZhaQu: Failed to load pools from', API_BASE, e);
             showStatus('Failed to load pools', 'error');
         }
     }
@@ -562,14 +578,17 @@
     });
 
     // Initialize
-    function init() {
+    async function init() {
         if (document.querySelector('.zhaqu-toggle')) return;
+
+        // Load API base first
+        await loadApiBase();
 
         createToggleButton();
         createActionBar();
         observeTimeline();
 
-        console.log('ZhaQu Extension v1.1 initialized');
+        console.log('ZhaQu Extension v1.1 initialized with API:', API_BASE);
     }
 
     if (document.readyState === 'loading') {
