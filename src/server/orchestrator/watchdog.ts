@@ -1,5 +1,8 @@
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
+import { createLogger } from "@/lib/logger"
+
+const log = createLogger({ component: "watchdog" })
 
 // ==================== Backoff Computation ====================
 
@@ -124,31 +127,31 @@ export async function startWatchdog(options?: {
     const intervalMs = options?.intervalMs ?? 30_000
 
     if (isRunning) {
-        console.warn("[watchdog] already running")
+        log.warn("Watchdog already running")
         return
     }
 
     isRunning = true
     shouldStop = false
-    console.log(`[watchdog] started (interval=${intervalMs}ms)`)
+    log.info({ intervalMs }, "Watchdog started")
 
     while (!shouldStop) {
         try {
             const { recovered, details } = await recoverStaleSteps()
 
             if (recovered > 0) {
-                console.log(`[watchdog] recovered ${recovered} stale steps`)
+                log.info({ recovered, details }, "Recovered stale steps")
                 options?.onRecovered?.(recovered, details)
             }
         } catch (e) {
-            console.error("[watchdog] error during recovery:", e)
+            log.error({ error: e instanceof Error ? e.message : String(e) }, "Error during recovery")
         }
 
         await new Promise((r) => setTimeout(r, intervalMs))
     }
 
     isRunning = false
-    console.log("[watchdog] stopped")
+    log.info("Watchdog stopped")
 }
 
 export function stopWatchdog(): void {
@@ -166,12 +169,12 @@ if (require.main === module) {
     const intervalMs = parseInt(process.env.WATCHDOG_INTERVAL_MS || "30000", 10)
 
     process.on("SIGINT", () => {
-        console.log("[watchdog] received SIGINT, stopping...")
+        log.info("Received SIGINT, stopping...")
         stopWatchdog()
     })
 
     process.on("SIGTERM", () => {
-        console.log("[watchdog] received SIGTERM, stopping...")
+        log.info("Received SIGTERM, stopping...")
         stopWatchdog()
     })
 
@@ -179,12 +182,12 @@ if (require.main === module) {
         intervalMs,
         onRecovered: (count, details) => {
             for (const d of details) {
-                console.log(`  - step=${d.stepId} job=${d.jobId} terminal=${d.terminal}`)
+                log.debug({ stepId: d.stepId, jobId: d.jobId, terminal: d.terminal }, "Step recovered")
             }
         },
     })
         .catch((e) => {
-            console.error("[watchdog] fatal error:", e)
+            log.error({ error: e instanceof Error ? e.message : String(e) }, "Fatal error")
             process.exitCode = 1
         })
         .finally(async () => {

@@ -1,6 +1,10 @@
 "use server"
 
 import { NextRequest, NextResponse } from "next/server"
+import { strictApiLimiter } from "@/lib/rate-limit"
+import { apiLogger } from "@/lib/logger"
+
+const log = apiLogger("/api/download", "GET")
 
 // ==================== Security Configuration ====================
 
@@ -85,6 +89,24 @@ function sanitizeFilename(input: string): string {
 // ==================== Main Handler ====================
 
 export async function GET(request: NextRequest) {
+    // Rate limiting by IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "anonymous"
+    const rateLimit = strictApiLimiter(ip)
+    if (!rateLimit.success) {
+        log.warn({ ip, remaining: rateLimit.remaining }, "Rate limit exceeded")
+        return NextResponse.json(
+            { error: "Too many requests" },
+            {
+                status: 429,
+                headers: {
+                    "X-RateLimit-Limit": String(rateLimit.limit),
+                    "X-RateLimit-Remaining": String(rateLimit.remaining),
+                    "X-RateLimit-Reset": String(rateLimit.resetAt),
+                }
+            }
+        )
+    }
+
     const url = request.nextUrl.searchParams.get("url")
     const filename = request.nextUrl.searchParams.get("filename") || "download"
 
@@ -213,7 +235,7 @@ export async function GET(request: NextRequest) {
         if (error instanceof Error && error.name === "AbortError") {
             return NextResponse.json({ error: "Request timeout" }, { status: 504 })
         }
-        console.error("Download proxy error:", error)
+        log.error({ error: error instanceof Error ? error.message : String(error) }, "Download proxy error")
         return NextResponse.json(
             { error: "Failed to download file" },
             { status: 500 }

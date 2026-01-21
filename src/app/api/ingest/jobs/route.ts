@@ -3,6 +3,10 @@ import prisma from "@/lib/prisma"
 import { parseTweetUrl } from "@/server/x/parseTweetUrl"
 import { createJobWithSteps } from "@/server/orchestrator"
 import { errorResponse, ErrorCodes } from "@/lib/apiResponse"
+import { defaultApiLimiter } from "@/lib/rate-limit"
+import { apiLogger } from "@/lib/logger"
+
+const log = apiLogger("/api/ingest/jobs", "POST")
 
 // GET /api/ingest/jobs - 获取入库任务列表
 export async function GET(request: NextRequest) {
@@ -27,7 +31,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ jobs })
     } catch (error) {
-        console.error("Failed to fetch ingest jobs:", error)
+        log.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to fetch ingest jobs")
         return errorResponse(
             ErrorCodes.DATABASE_ERROR,
             "Failed to fetch ingest jobs",
@@ -119,7 +123,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ job: result.ingestJob, orchestrationJobId: result.orchestrationJobId }, { status: 201 })
 
     } catch (error) {
-        console.error("Failed to create ingest job:", error)
+        log.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to create ingest job")
         return NextResponse.json(
             { error: "Failed to create ingest job" },
             { status: 500 }
