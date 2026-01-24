@@ -8,9 +8,8 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
     <div
         ref={ref}
-        // 移除 shadow，强调极细边框
         className={cn(
-            "rounded-lg border bg-card text-card-foreground",
+            "rounded-lg border border-border/60 bg-card text-card-foreground shadow-sm transition-all duration-200 hover:shadow-md hover:border-border",
             className
         )}
         {...props}

@@ -21,9 +21,9 @@ export function PageShell({
     if (variant === "focus") {
         return (
             <div className={cn("max-w-4xl mx-auto pt-12 pb-16 animate-fade-in px-4", className)}>
-                <div className="mb-10 text-center space-y-2">
-                    {title && <div className="text-3xl font-semibold tracking-tight">{title}</div>}
-                    {description && <div className="text-muted-foreground max-w-2xl mx-auto">{description}</div>}
+                <div className="mb-10 text-center space-y-3">
+                    {title && <div className="text-3xl font-semibold tracking-tight text-foreground">{title}</div>}
+                    {description && <div className="text-muted-foreground max-w-2xl mx-auto text-base">{description}</div>}
                 </div>
                 {children}
             </div>
@@ -35,10 +35,10 @@ export function PageShell({
         return (
             <div className={cn("flex flex-col h-full flex-1 min-h-0 animate-fade-in", className)}>
                 {(title || headerAction) && (
-                    <div className="flex items-center justify-between px-6 py-4 border-b shrink-0 bg-background/50 backdrop-blur-sm">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0 bg-background/80 backdrop-blur-sm">
                         <div>
-                            {title && <div className="text-lg font-semibold tracking-tight">{title}</div>}
-                            {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+                            {title && <div className="text-lg font-semibold tracking-tight text-foreground">{title}</div>}
+                            {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
                         </div>
                         {headerAction && <div className="flex items-center gap-2">{headerAction}</div>}
                     </div>
@@ -52,10 +52,10 @@ export function PageShell({
 
     // Default variant: Standard page with max-width
     return (
-        <div className={cn("max-w-6xl mx-auto pt-6 pb-12 animate-fade-in px-6", className)}>
+        <div className={cn("max-w-6xl mx-auto pt-8 pb-12 animate-fade-in px-6", className)}>
             {(title || headerAction) && (
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b pb-5 mb-8 gap-4">
-                    <div className="space-y-1">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-border/50 pb-6 mb-8 gap-4">
+                    <div className="space-y-1.5">
                         {title && <div className="text-2xl font-semibold tracking-tight text-foreground">{title}</div>}
                         {description && <div className="text-sm text-muted-foreground">{description}</div>}
                     </div>
