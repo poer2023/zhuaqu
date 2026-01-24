@@ -172,22 +172,22 @@ export default function PoolsPage() {
         setIsApplyingTags(true)
 
         try {
-            // 为每个选中的内容项添加标签
-            const results = await Promise.all(
-                selectedItemIds.map(async (itemId) => {
-                    const res = await fetch(`/api/content-items/${itemId}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ addTagIds: selectedTagIds }),
-                    })
-                    return { itemId, ok: res.ok, status: res.status }
-                })
-            )
+            // 使用批量 API 替代多个单独请求
+            const res = await fetch("/api/pools/items", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "addTags",
+                    itemIds: selectedItemIds,
+                    data: {
+                        tagIds: selectedTagIds,
+                        workspaceId: currentWorkspaceId,
+                    },
+                }),
+            })
 
-            const failed = results.filter(r => !r.ok)
-            if (failed.length > 0) {
-                console.error(`Failed to apply tags to ${failed.length} items:`, failed)
-                // 可以在这里添加用户通知，但至少确保部分成功的情况下刷新数据
+            if (!res.ok) {
+                console.error("Failed to apply tags:", await res.text())
             }
 
             setShowTagDialog(false)
@@ -314,7 +314,7 @@ export default function PoolsPage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <div className="h-7 w-7 rounded-full bg-zinc-100 flex items-center justify-center text-[10px] font-bold dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                                                <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                                                     {item.authorHandle[0]?.toUpperCase() || "?"}
                                                 </div>
                                                 <div className="flex flex-col">
@@ -331,7 +331,7 @@ export default function PoolsPage() {
                                         <TableCell>
                                             <Badge variant="outline" className={`text-[10px] ${item.publishStatus === 'PUBLISHED' ? "text-green-600 border-green-200 bg-green-50/50 dark:bg-green-900/10 dark:border-green-800/50" :
                                                 item.rewriteStatus === 'APPROVED' ? "text-blue-600 border-blue-200 bg-blue-50/50" :
-                                                    "text-zinc-500 bg-zinc-100/50 border-zinc-200 dark:bg-zinc-800/30 dark:border-zinc-700"
+                                                    "text-muted-foreground bg-muted/50 border-border"
                                                 }`}>
                                                 {item.publishStatus === 'PUBLISHED' ? 'published' :
                                                     item.rewriteStatus === 'APPROVED' ? 'approved' :
@@ -369,7 +369,7 @@ export default function PoolsPage() {
                             <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-xs font-medium px-2.5"
+                                className="h-7 hover:bg-accent rounded-full text-xs font-medium px-2.5"
                                 onClick={handleBatchRewrite}
                                 disabled={isCreatingBatch}
                             >
@@ -382,7 +382,7 @@ export default function PoolsPage() {
                             <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full w-7 p-0"
+                                className="h-7 hover:bg-accent rounded-full w-7 p-0"
                                 onClick={handleOpenTagDialog}
                             >
                                 <Tag className="h-3 w-3" strokeWidth={1.5} />

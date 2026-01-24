@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { createBatchAuditLogs, createBatchItemAuditEntries } from "@/lib/audit"
 
 // GET /api/pools/items - 获取素材池内容条目（支持游标分页 + 筛选）
 export async function GET(request: NextRequest) {
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
 
         switch (action) {
             case "addTags": {
-                const { tagIds } = data
+                const { tagIds, workspaceId } = data
                 if (!tagIds || !Array.isArray(tagIds)) {
                     return NextResponse.json({ error: "tagIds required" }, { status: 400 })
                 }
@@ -186,11 +187,23 @@ export async function POST(request: NextRequest) {
                     skipDuplicates: true,
                 })
 
+                // 审计日志
+                if (workspaceId) {
+                    const auditEntries = createBatchItemAuditEntries(
+                        workspaceId,
+                        itemIds,
+                        "ITEM_TAGGED",
+                        { tagIds, tagCount: tagIds.length },
+                        "owner"
+                    )
+                    await createBatchAuditLogs(auditEntries)
+                }
+
                 return NextResponse.json({ success: true, affected: itemIds.length })
             }
 
             case "move": {
-                const { poolId } = data
+                const { poolId, workspaceId } = data
                 if (!poolId) {
                     return NextResponse.json({ error: "poolId required" }, { status: 400 })
                 }
@@ -199,6 +212,18 @@ export async function POST(request: NextRequest) {
                     where: { id: { in: itemIds } },
                     data: { poolId }
                 })
+
+                // 审计日志
+                if (workspaceId) {
+                    const auditEntries = createBatchItemAuditEntries(
+                        workspaceId,
+                        itemIds,
+                        "ITEM_MOVED",
+                        { targetPoolId: poolId },
+                        "owner"
+                    )
+                    await createBatchAuditLogs(auditEntries)
+                }
 
                 return NextResponse.json({ success: true, affected: itemIds.length })
             }
@@ -213,9 +238,31 @@ export async function POST(request: NextRequest) {
             }
 
             case "delete": {
+                const { workspaceId } = data || {}
+
+                // 先获取要删除的内容项信息用于审计
+                const itemsToDelete = workspaceId
+                    ? await prisma.contentItem.findMany({
+                        where: { id: { in: itemIds } },
+                        select: { id: true, workspaceId: true, sourceUrl: true },
+                    })
+                    : []
+
                 await prisma.contentItem.deleteMany({
                     where: { id: { in: itemIds } }
                 })
+
+                // 审计日志
+                if (workspaceId && itemsToDelete.length > 0) {
+                    const auditEntries = itemsToDelete.map((item) => ({
+                        workspaceId: item.workspaceId,
+                        contentItemId: item.id,
+                        action: "ITEM_DELETED" as const,
+                        details: { sourceUrl: item.sourceUrl },
+                        actor: "owner",
+                    }))
+                    await createBatchAuditLogs(auditEntries)
+                }
 
                 return NextResponse.json({ success: true, affected: itemIds.length })
             }
