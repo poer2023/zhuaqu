@@ -121,6 +121,9 @@ model Workspace {
   auditLogs       AuditLog[]
   xAccounts       XAccount[]   // 支持多账号
   syncJobs        SyncJob[]
+  brandVoices     BrandVoice[]
+  topics          Topic[]      // 内容发现话题
+  evergreenQueues EvergreenQueue[]  // 常青内容队列
 
   @@map("workspaces")
 }
@@ -287,6 +290,12 @@ model ContentItem {
   @@index([rewriteStatus])
   @@index([publishStatus])
   @@index([authorHandle])
+  // Composite indexes for common query patterns
+  @@index([workspaceId, poolId, rewriteStatus])
+  @@index([workspaceId, publishStatus])
+  @@index([poolId, captureStatus])
+  @@index([workspaceId, poolId, publishStatus])
+  @@index([workspaceId, createdAt])
   @@map("content_items")
 }
 
@@ -362,6 +371,34 @@ model IngestJob {
   @@index([jobId])
   @@index([status])
   @@map("ingest_jobs")
+}
+
+// ==================== 品牌声音系统 ====================
+
+model BrandVoice {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String
+  description   String?
+
+  // 训练样本
+  sampleTweets  Json     @default("[]")  // 用户提供的示例推文
+
+  // AI 分析结果
+  styleProfile  Json?    // { tone, vocabulary, patterns, sentenceStructure }
+  systemPrompt  String?  @db.Text  // 生成的专属提示词
+
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@index([isDefault])
+  @@map("brand_voices")
 }
 
 // ==================== 改写系统 ====================
@@ -667,4 +704,251 @@ model SyncJob {
   @@index([status])
   @@index([createdAt])
   @@map("sync_jobs")
+}
+
+// ==================== 内容发现系统 (Phase 5) ====================
+
+model Topic {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String
+  description   String?
+
+  // 话题类型
+  type          String   @default("keyword")  // keyword, hashtag, author, list
+
+  // 查询配置
+  query         String?                        // 搜索关键词
+  hashtags      Json     @default("[]")        // 关联的 hashtag
+  authorHandles Json     @default("[]")        // 关注的作者
+  xListId       String?                        // X List ID
+
+  // 同步配置
+  syncEnabled   Boolean  @default(true)
+  syncInterval  Int      @default(60)          // 同步间隔（分钟）
+  lastSyncAt    DateTime?
+  nextSyncAt    DateTime?
+
+  // 过滤配置
+  minLikes      Int      @default(0)
+  minRetweets   Int      @default(0)
+  excludeReplies Boolean @default(true)
+  excludeRetweets Boolean @default(true)
+  language      String?                        // 语言过滤
+
+  // 统计
+  totalDiscovered Int    @default(0)
+  totalImported   Int    @default(0)
+
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  discoveries   DiscoveredContent[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@index([isActive])
+  @@index([nextSyncAt])
+  @@map("topics")
+}
+
+model DiscoveredContent {
+  id            String   @id @default(cuid())
+  topicId       String
+
+  // 来源信息
+  sourceId      String                         // tweet_id
+  sourceUrl     String
+  authorHandle  String
+  authorName    String?
+  authorAvatar  String?
+
+  // 内容
+  textContent   String   @db.Text
+  media         Json     @default("[]")
+  rawJson       Json     @default("{}")
+
+  // 互动数据
+  likeCount     Int      @default(0)
+  retweetCount  Int      @default(0)
+  replyCount    Int      @default(0)
+  viewCount     Int      @default(0)
+
+  // 热度评分 (算法计算)
+  viralScore    Float    @default(0)
+
+  // 状态
+  isImported    Boolean  @default(false)       // 是否已导入素材池
+  importedAt    DateTime?
+  contentItemId String?                        // 导入后的 ContentItem ID
+
+  // 标记
+  isBookmarked  Boolean  @default(false)       // 用户收藏
+  isHidden      Boolean  @default(false)       // 用户隐藏
+
+  discoveredAt  DateTime @default(now())
+  publishedAt   DateTime?                      // 原推发布时间
+
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, sourceId])
+  @@index([topicId])
+  @@index([isImported])
+  @@index([viralScore])
+  @@index([discoveredAt])
+  @@index([topicId, isImported, viralScore])
+  @@map("discovered_contents")
+}
+
+// ==================== 自动化系统 (Phase 6) ====================
+
+// 常青内容队列
+model EvergreenQueue {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String
+  description   String?
+
+  // 队列配置
+  isActive      Boolean  @default(true)
+
+  // 循环设置
+  cycleInterval Int      @default(168)        // 循环间隔（小时），默认 7 天
+  maxReposts    Int      @default(5)          // 每条内容最大重发次数
+
+  // 发布时间窗口
+  publishWindows Json    @default("[]")       // [{ dayOfWeek: 0-6, startHour: 9, endHour: 21 }]
+  timezone      String   @default("Asia/Shanghai")
+
+  // 随机化
+  randomizeOrder Boolean @default(true)       // 随机顺序
+  variationEnabled Boolean @default(false)   // 启用变体
+
+  // 统计
+  totalItems    Int      @default(0)
+  totalReposts  Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items         EvergreenItem[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@index([isActive])
+  @@map("evergreen_queues")
+}
+
+// 常青内容项
+model EvergreenItem {
+  id              String   @id @default(cuid())
+  queueId         String
+  contentItemId   String?
+  rewriteVersionId String?
+
+  // 内容快照（避免关联删除问题）
+  contentSnapshot Json     @default("{}")    // { text, media }
+
+  // 状态
+  isActive        Boolean  @default(true)
+  isPaused        Boolean  @default(false)
+
+  // 循环统计
+  repostCount     Int      @default(0)
+  lastPostedAt    DateTime?
+  nextPostAt      DateTime?
+
+  // 表现数据
+  totalLikes      Int      @default(0)
+  totalRetweets   Int      @default(0)
+  totalViews      Int      @default(0)
+  avgEngagement   Float    @default(0)       // 平均互动率
+
+  // 排序权重（表现越好权重越高）
+  weight          Float    @default(1.0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  queue           EvergreenQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@index([queueId])
+  @@index([isActive, nextPostAt])
+  @@index([queueId, isActive, weight])
+  @@map("evergreen_items")
+}
+
+// A/B 测试变体
+model ContentVariant {
+  id              String   @id @default(cuid())
+  rewriteVersionId String
+
+  // 变体类型
+  variantType     String   @default("tone")  // tone, length, hook, cta
+  variantLabel    String                     // A, B, C...
+
+  // 变体内容
+  content         String   @db.Text
+
+  // 生成参数快照
+  generationParams Json    @default("{}")
+
+  // 测试状态
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+
+  // 表现数据
+  impressions     Int      @default(0)
+  likes           Int      @default(0)
+  retweets        Int      @default(0)
+  replies         Int      @default(0)
+  clicks          Int      @default(0)
+
+  // 计算指标
+  engagementRate  Float    @default(0)
+  clickRate       Float    @default(0)
+
+  // 是否胜出
+  isWinner        Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([rewriteVersionId])
+  @@index([isPublished])
+  @@index([rewriteVersionId, isWinner])
+  @@map("content_variants")
+}
+
+// 内容质量评分
+model ContentScore {
+  id              String   @id @default(cuid())
+  contentItemId   String?
+  rewriteVersionId String?
+
+  // 评分维度（1-10）
+  hookScore       Float    @default(0)       // 开头吸引力
+  clarityScore    Float    @default(0)       // 表达清晰度
+  engagementScore Float    @default(0)       // 互动潜力（CTA、提问）
+  originalityScore Float   @default(0)       // 原创度
+
+  // 综合评分
+  overallScore    Float    @default(0)
+
+  // 评分详情
+  analysis        Json     @default("{}")    // AI 分析详情
+  suggestions     Json     @default("[]")    // 改进建议
+
+  // 警告标记
+  warnings        Json     @default("[]")    // 敏感词、过长等警告
+
+  scoredAt        DateTime @default(now())
+
+  @@unique([rewriteVersionId])
+  @@index([contentItemId])
+  @@index([overallScore])
+  @@map("content_scores")
 }

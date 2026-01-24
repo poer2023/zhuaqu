@@ -14,7 +14,8 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { PageShell } from "@/components/layout/PageShell"
-import { Loader2, Check, ExternalLink, Chrome } from "lucide-react"
+import { Loader2, Check, ExternalLink, Chrome, Twitter } from "lucide-react"
+import Link from "next/link"
 import { useTranslations } from "@/stores/localeStore"
 import { PoolsTagsSettings } from "@/components/settings/PoolsTagsSettings"
 import { BlacklistSettings } from "@/components/settings/BlacklistSettings"
@@ -162,6 +163,13 @@ export default function SettingsPage() {
                             Blacklist & Rules
                         </TabsTrigger>
                         <div className="mt-3 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-full">{t.settings.tabs.system}</div>
+                        <Link
+                            href="/settings/x-accounts"
+                            className="w-full flex items-center gap-2 px-2 py-2 -ml-2 rounded-md text-sm text-muted-foreground transition-all hover:text-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        >
+                            <Twitter className="h-4 w-4" />
+                            X 账号
+                        </Link>
                         <TabsTrigger
                             value="integrations"
                             className="w-full justify-start px-2 py-2 data-[state=active]:bg-zinc-100 dark:data-[state=active]:bg-zinc-800 data-[state=active]:text-foreground data-[state=active]:font-medium data-[state=active]:shadow-none -ml-2 rounded-md text-sm text-muted-foreground transition-all hover:text-foreground"

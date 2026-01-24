@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { PageShell } from "@/components/layout/PageShell"
@@ -10,14 +10,20 @@ import {
     CalendarDays,
     Loader2,
     RefreshCw,
-    X
+    X,
+    List,
+    Calendar as CalendarIcon
 } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { usePublishStore } from "@/stores/publishStore"
+import { CalendarView } from "@/components/publish/CalendarView"
+
+type ViewMode = "list" | "calendar"
 
 export default function PublishPage() {
+    const [viewMode, setViewMode] = useState<ViewMode>("list")
     // Zustand stores
     const { currentWorkspaceId, fetchWorkspaces } = useWorkspaceStore()
     const {
@@ -62,6 +68,27 @@ export default function PublishPage() {
             description="Manage your publication queue and schedule."
             headerAction={
                 <div className="flex gap-2">
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center bg-muted rounded-lg p-0.5">
+                        <Button
+                            variant={viewMode === "list" ? "secondary" : "ghost"}
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => setViewMode("list")}
+                        >
+                            <List className="h-3 w-3 mr-1" />
+                            列表
+                        </Button>
+                        <Button
+                            variant={viewMode === "calendar" ? "secondary" : "ghost"}
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => setViewMode("calendar")}
+                        >
+                            <CalendarIcon className="h-3 w-3 mr-1" />
+                            日历
+                        </Button>
+                    </div>
                     <Button
                         variant="outline"
                         size="sm"
@@ -89,8 +116,23 @@ export default function PublishPage() {
             }
         >
             <div className="space-y-8">
-                <div className="grid gap-8 lg:grid-cols-3">
-                    <div className="lg:col-span-2 space-y-8">
+                {/* Calendar View */}
+                {viewMode === "calendar" ? (
+                    <CalendarView
+                        jobs={jobs}
+                        onJobClick={(job) => {
+                            // Open job details or navigate
+                            console.log("Job clicked:", job.id)
+                        }}
+                        onSlotClick={(date) => {
+                            // Create new scheduled post
+                            console.log("Slot clicked:", date)
+                        }}
+                    />
+                ) : (
+                    /* List View */
+                    <div className="grid gap-8 lg:grid-cols-3">
+                        <div className="lg:col-span-2 space-y-8">
                         {/* Queued Jobs */}
                         <div className="space-y-4">
                             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -244,7 +286,8 @@ export default function PublishPage() {
                             </div>
                         </div>
                     </div>
-                </div>
+                    </div>
+                )}
             </div>
         </PageShell>
     )

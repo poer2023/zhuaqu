@@ -17,7 +17,12 @@ import {
     Loader2,
     XCircle,
     RefreshCw,
+    MessageSquare,
+    Eye,
 } from "lucide-react"
+import { TweetPreview } from "@/components/content/TweetPreview"
+import { CharCounter } from "@/components/rewrite/CharCounter"
+import { BrandVoiceSelector } from "@/components/rewrite/BrandVoiceSelector"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useRewriteStore } from "@/stores/rewriteStore"
@@ -116,6 +121,8 @@ export default function RewritePage() {
         isLoading,
         isSubmitting,
         isStreaming,
+        selectedBrandVoiceId,
+        setSelectedBrandVoiceId,
         fetchBatches,
         getBatch,
         setCurrentVersionIndex,
@@ -323,7 +330,7 @@ export default function RewritePage() {
                             />
 
                             {/* Toolbar */}
-                            <div className="h-10 border-b px-3 flex items-center justify-between shrink-0 bg-background/80 backdrop-blur-sm z-10">
+                            <div className="h-12 border-b px-3 flex items-center justify-between shrink-0 bg-background/80 backdrop-blur-sm z-10">
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-0.5 bg-muted/20 rounded-md p-0.5 border border-border/50">
                                         <Button
@@ -361,6 +368,13 @@ export default function RewritePage() {
                                             {currentVersion.status.toLowerCase()}
                                         </Badge>
                                     )}
+                                    <div className="h-4 w-px bg-border/60"></div>
+                                    {/* Brand Voice Selector */}
+                                    <BrandVoiceSelector
+                                        workspaceId={currentWorkspaceId}
+                                        value={selectedBrandVoiceId}
+                                        onChange={setSelectedBrandVoiceId}
+                                    />
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
@@ -397,8 +411,9 @@ export default function RewritePage() {
                                 </div>
                             </div>
 
-                            {/* Split View */}
-                            <div className="flex-1 grid grid-cols-2 divide-x h-full overflow-hidden">
+                            {/* Split View - 3 columns */}
+                            <div className="flex-1 grid grid-cols-3 divide-x h-full overflow-hidden">
+                                {/* Left: Original */}
                                 <div className="p-6 overflow-y-auto bg-muted/5">
                                     <div className="max-w-md mx-auto space-y-4">
                                         <div className="flex items-center gap-2 opacity-70">
@@ -407,12 +422,13 @@ export default function RewritePage() {
                                                 @{currentVersion?.contentItem?.authorHandle || "unknown"}
                                             </span>
                                         </div>
-                                        <div className="text-sm text-muted-foreground leading-relaxed">
+                                        <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
                                             {currentVersion?.contentItem?.textOriginal || "No content"}
                                         </div>
                                     </div>
                                 </div>
 
+                                {/* Center: Editor */}
                                 <div className="p-6 overflow-y-auto bg-background/50 relative group">
                                     <div className="max-w-md mx-auto space-y-4 h-full flex flex-col">
                                         <div className="flex items-center justify-between">
@@ -448,6 +464,24 @@ export default function RewritePage() {
                                             value={editedText}
                                             onChange={(e) => setCurrentEditedText(e.target.value)}
                                             placeholder="Rewrite content..."
+                                        />
+                                        {/* Character Counter */}
+                                        <CharCounter text={editedText} showSplitSuggestion={false} />
+                                    </div>
+                                </div>
+
+                                {/* Right: Preview */}
+                                <div className="p-6 overflow-y-auto bg-muted/5">
+                                    <div className="max-w-md mx-auto space-y-4">
+                                        <div className="flex items-center gap-2 opacity-70">
+                                            <Eye className="h-3 w-3" />
+                                            <Badge variant="outline" className="text-[9px] font-mono tracking-wider">PREVIEW</Badge>
+                                        </div>
+                                        <TweetPreview
+                                            content={editedText}
+                                            authorName="Your Name"
+                                            authorHandle={currentVersion?.contentItem?.authorHandle || "yourhandle"}
+                                            showEngagement={true}
                                         />
                                     </div>
                                 </div>

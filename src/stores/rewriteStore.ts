@@ -72,11 +72,13 @@ interface RewriteState {
     // 流式改写
     streamingText: string
     isStreaming: boolean
+    selectedBrandVoiceId: string | null
+    setSelectedBrandVoiceId: (id: string | null) => void
     streamRewrite: (
         originalText: string,
         params?: Record<string, unknown>,
         onChunk?: (text: string) => void,
-        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean }
+        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean; brandVoiceId?: string }
     ) => Promise<string>
     clearStreamingText: () => void
 }
@@ -271,20 +273,28 @@ export const useRewriteStore = create<RewriteState>()((set, get) => ({
     // 流式改写
     streamingText: "",
     isStreaming: false,
+    selectedBrandVoiceId: null,
+
+    setSelectedBrandVoiceId: (id: string | null) => {
+        set({ selectedBrandVoiceId: id })
+    },
 
     streamRewrite: async (
         originalText: string,
         params?: Record<string, unknown>,
         onChunk?: (text: string) => void,
-        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean }
+        meta?: { workspaceId?: string; contentItemId?: string; force?: boolean; brandVoiceId?: string }
     ) => {
+        const { selectedBrandVoiceId } = get()
+        const brandVoiceId = meta?.brandVoiceId ?? selectedBrandVoiceId
+
         set({ isStreaming: true, streamingText: "", error: null })
 
         try {
             const response = await fetch('/api/rewrite/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ originalText, params, ...meta }),
+                body: JSON.stringify({ originalText, params, ...meta, brandVoiceId }),
             })
 
             if (!response.ok) throw new Error('Stream request failed')

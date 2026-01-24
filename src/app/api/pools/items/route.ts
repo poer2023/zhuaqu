@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 
-// GET /api/pools/items - 获取素材池内容条目（分页 + 筛选）
+// GET /api/pools/items - 获取素材池内容条目（支持游标分页 + 筛选）
 export async function GET(request: NextRequest) {
     try {
         const { searchParams } = new URL(request.url)
@@ -9,19 +9,23 @@ export async function GET(request: NextRequest) {
         // 筛选参数
         const workspaceId = searchParams.get("workspaceId")
         const poolId = searchParams.get("poolId")
-        const q = searchParams.get("q") // 搜索关键词
+        const q = searchParams.get("q") || searchParams.get("search") // 搜索关键词
         const tags = searchParams.get("tags")?.split(",").filter(Boolean)
         const author = searchParams.get("author")
         const captureStatus = searchParams.get("captureStatus")
         const rewriteStatus = searchParams.get("rewriteStatus")
         const publishStatus = searchParams.get("publishStatus")
         const mediaType = searchParams.get("mediaType")
+        const statusFilter = searchParams.get("statusFilter")
 
-        // 分页 (OPT-M6: clamp limit to max 100)
-        const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+        // 分页 - 支持 cursor 和 page 两种模式
+        const cursor = searchParams.get("cursor")
         const MAX_LIMIT = 100
         const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get("limit") || "20")))
-        const skip = (page - 1) * limit
+
+        // 传统分页 (向后兼容)
+        const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+        const skip = cursor ? 1 : (page - 1) * limit // cursor 模式下 skip=1 跳过 cursor 本身
 
         // 构建查询条件
         const where: Record<string, unknown> = {
@@ -34,6 +38,25 @@ export async function GET(request: NextRequest) {
         if (captureStatus) where.captureStatus = captureStatus
         if (rewriteStatus) where.rewriteStatus = rewriteStatus
         if (publishStatus) where.publishStatus = publishStatus
+
+        // 状态筛选快捷方式
+        if (statusFilter) {
+            switch (statusFilter) {
+                case "pending":
+                    where.captureStatus = "QUEUED"
+                    break
+                case "rewrite_pending":
+                    where.rewriteStatus = { in: ["NONE", "REWORK"] }
+                    break
+                case "publish_pending":
+                    where.rewriteStatus = "APPROVED"
+                    where.publishStatus = "NOT_PUBLISHED"
+                    break
+                case "published":
+                    where.publishStatus = "PUBLISHED"
+                    break
+            }
+        }
 
         // 搜索
         if (q) {
@@ -54,22 +77,18 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // 媒体类型筛选 (OPT-H2: use Prisma-compatible JSON filter)
-        // Note: Prisma JsonFilter.path only accepts string[] for Postgres, not JSONPath
-        // Using array_contains for type-safe filtering
+        // 媒体类型筛选
         if (mediaType) {
             if (mediaType === "none") {
                 where.media = { equals: [] }
             } else if (mediaType === "image") {
-                // Filter for items that have at least one image media
                 where.media = { array_contains: [{ type: "image" }] }
             } else if (mediaType === "video") {
-                // Filter for items that have at least one video media
                 where.media = { array_contains: [{ type: "video" }] }
             }
         }
 
-        // 查询
+        // 查询 - 支持 cursor 分页
         const [items, total] = await Promise.all([
             prisma.contentItem.findMany({
                 where,
@@ -89,7 +108,7 @@ export async function GET(request: NextRequest) {
                         select: { rewriteVersions: true }
                     }
                 },
-                skip,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : { skip }),
                 take: limit,
                 orderBy: { createdAt: "desc" }
             }),
@@ -105,14 +124,24 @@ export async function GET(request: NextRequest) {
             rewriteCount: item._count.rewriteVersions,
         }))
 
+        // 计算下一个 cursor
+        const nextCursor = items.length === limit ? items[items.length - 1]?.id : undefined
+        const hasMore = cursor
+            ? items.length === limit
+            : (skip + items.length) < total
+
         return NextResponse.json({
             items: formattedItems,
+            total,
+            hasMore,
+            nextCursor,
+            // 保留传统分页信息 (向后兼容)
             pageInfo: {
                 page,
                 limit,
                 total,
                 totalPages: Math.ceil(total / limit),
-                hasMore: skip + items.length < total,
+                hasMore,
             }
         })
     } catch (error) {

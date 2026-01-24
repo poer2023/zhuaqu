@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
   const originalText = typeof body.originalText === "string" ? body.originalText : null
   const params = (isRecord(body.params) ? body.params : {}) as Prisma.InputJsonValue
   const force = body.force === true
+  const brandVoiceId = typeof body.brandVoiceId === "string" ? body.brandVoiceId : null
 
   const inferredWorkspaceId = contentItemId
     ? (await prisma.contentItem.findUnique({ where: { id: contentItemId }, select: { workspaceId: true } }))?.workspaceId || null
@@ -71,7 +72,19 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  const paramsKey = hashParams(params)
+  // Fetch brand voice system prompt if provided
+  let brandVoicePrompt: string | null = null
+  if (brandVoiceId) {
+    const brandVoice = await prisma.brandVoice.findUnique({
+      where: { id: brandVoiceId },
+      select: { systemPrompt: true, name: true },
+    })
+    if (brandVoice?.systemPrompt) {
+      brandVoicePrompt = brandVoice.systemPrompt
+    }
+  }
+
+  const paramsKey = hashParams({ ...params as object, brandVoiceId })
   let idempotencyKey: string | null = null
   if (contentItemId) {
     const base = `stream:${contentItemId}:${paramsKey}`
@@ -91,14 +104,21 @@ export async function POST(request: NextRequest) {
   const { job, steps } = await createJobWithSteps({
     type: "REWRITE",
     workspaceId,
-    config: { mode: "stream", contentItemId, params } as Prisma.InputJsonValue,
+    config: { mode: "stream", contentItemId, params, brandVoiceId } as Prisma.InputJsonValue,
     idempotencyKey,
     steps: [
       {
         type: "REWRITE",
         status: "QUEUED",
         maxAttempts: 1,
-        inputRef: { mode: "stream", contentItemId, originalText, params } as Prisma.InputJsonValue,
+        inputRef: {
+          mode: "stream",
+          contentItemId,
+          originalText,
+          params,
+          brandVoiceId,
+          brandVoicePrompt,
+        } as Prisma.InputJsonValue,
       },
     ],
   })
