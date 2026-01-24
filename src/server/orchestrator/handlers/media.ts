@@ -1,6 +1,8 @@
 import { AppError } from "@/server/errors"
-import { markStepSkipped } from "@/server/orchestrator/orchestrator"
+import { markStepSucceeded, markStepSkipped } from "@/server/orchestrator/orchestrator"
 import { appendStepLog, appendStepProgress } from "@/server/orchestrator/stepEvents"
+import { downloadMedia } from "@/server/services/storage"
+import { prisma } from "@/lib/prisma"
 
 // ==================== Types ====================
 
@@ -24,6 +26,7 @@ export async function handleMediaStep(step: Step & { job: Job }): Promise<void> 
 
     const input = isRecord(step.inputRef) ? step.inputRef : {}
     const mediaUrls = Array.isArray(input.mediaUrls) ? input.mediaUrls : []
+    const contentItemId = typeof input.contentItemId === "string" ? input.contentItemId : null
 
     await appendStepLog(step.id, `Starting media processing for ${mediaUrls.length} items`)
 
@@ -33,28 +36,61 @@ export async function handleMediaStep(step: Step & { job: Job }): Promise<void> 
         return
     }
 
-    // OPT-L2: This is a placeholder implementation - mark as skipped until properly implemented
-    // TODO: Implement actual download and transcode logic:
-    // 1. Download media files
-    // 2. Store to R2/S3
-    // 3. Optional: video transcode, image compression
-    // 4. Update ContentItem media references
-
-    const results: Array<{ url: string; status: string; reason?: string }> = []
-
-    for (let i = 0; i < mediaUrls.length; i++) {
-        const url = mediaUrls[i] as string
-        await appendStepProgress(step.id, i + 1, mediaUrls.length, `Processing ${url}`)
-
-        // Mark as skipped since not implemented
-        await appendStepLog(step.id, `Skipped media (not implemented): ${url}`, "warn")
-        results.push({ url, status: "skipped", reason: "not_implemented" })
+    if (!contentItemId) {
+        await appendStepLog(step.id, "No contentItemId provided, skipping media download", "warn")
+        await markStepSkipped(step.id, { reason: "no_content_item_id" } as JsonValue)
+        return
     }
 
-    await markStepSkipped(step.id, {
-        reason: "media_handler_not_implemented",
+    const results: Array<{ url: string; status: string; localUrl?: string; error?: string }> = []
+    const updatedMedia: Array<{ type: string; url: string; originalUrl: string }> = []
+
+    for (let i = 0; i < mediaUrls.length; i++) {
+        const mediaItem = mediaUrls[i] as { type?: string; url?: string } | string
+        const url = typeof mediaItem === "string" ? mediaItem : mediaItem?.url
+        const type = typeof mediaItem === "string" ? "image" : (mediaItem?.type || "image")
+
+        if (!url) {
+            results.push({ url: "unknown", status: "skipped", error: "invalid_url" })
+            continue
+        }
+
+        await appendStepProgress(step.id, i + 1, mediaUrls.length, `Downloading ${url}`)
+
+        const downloadResult = await downloadMedia(url, step.job.workspaceId, contentItemId)
+
+        if (downloadResult.success && downloadResult.publicUrl) {
+            await appendStepLog(step.id, `Downloaded: ${url} -> ${downloadResult.publicUrl}`)
+            results.push({ url, status: "downloaded", localUrl: downloadResult.publicUrl })
+            updatedMedia.push({ type, url: downloadResult.publicUrl, originalUrl: url })
+        } else {
+            await appendStepLog(step.id, `Failed to download ${url}: ${downloadResult.error}`, "warn")
+            results.push({ url, status: "failed", error: downloadResult.error })
+            // Keep original URL if download fails
+            updatedMedia.push({ type, url, originalUrl: url })
+        }
+    }
+
+    // Update ContentItem with new media references
+    if (updatedMedia.length > 0) {
+        try {
+            await prisma.contentItem.update({
+                where: { id: contentItemId },
+                data: { media: updatedMedia },
+            })
+            await appendStepLog(step.id, `Updated ContentItem ${contentItemId} with ${updatedMedia.length} media items`)
+        } catch (error) {
+            await appendStepLog(step.id, `Failed to update ContentItem: ${error}`, "error")
+        }
+    }
+
+    const downloaded = results.filter((r) => r.status === "downloaded").length
+    const failed = results.filter((r) => r.status === "failed").length
+
+    await markStepSucceeded(step.id, {
         total: mediaUrls.length,
-        skipped: results.length,
+        downloaded,
+        failed,
         results,
     } as JsonValue)
 }

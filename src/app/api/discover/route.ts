@@ -84,6 +84,57 @@ export async function GET(request: NextRequest) {
     }
 }
 
+// PATCH /api/discover - Update discovered content (bookmark, hide, etc.)
+export async function PATCH(request: NextRequest) {
+    try {
+        const body = await request.json()
+        const { action, discoveryId, workspaceId, isBookmarked } = body
+
+        if (!discoveryId || !workspaceId) {
+            return NextResponse.json(
+                { error: "discoveryId and workspaceId are required" },
+                { status: 400 }
+            )
+        }
+
+        // Verify discovery belongs to workspace
+        const discovery = await prisma.discoveredContent.findFirst({
+            where: {
+                id: discoveryId,
+                topic: { workspaceId },
+            },
+        })
+
+        if (!discovery) {
+            return NextResponse.json(
+                { error: "Discovery not found or access denied" },
+                { status: 404 }
+            )
+        }
+
+        if (action === "bookmark") {
+            const updated = await prisma.discoveredContent.update({
+                where: { id: discoveryId },
+                data: { isBookmarked: Boolean(isBookmarked) },
+                select: { id: true, isBookmarked: true },
+            })
+
+            return NextResponse.json({ success: true, discovery: updated })
+        }
+
+        return NextResponse.json(
+            { error: "Invalid action" },
+            { status: 400 }
+        )
+    } catch (error) {
+        console.error("Failed to update discovery:", error)
+        return NextResponse.json(
+            { error: "Failed to update discovery" },
+            { status: 500 }
+        )
+    }
+}
+
 // POST /api/discover - Import discovered content to pool
 export async function POST(request: NextRequest) {
     try {

@@ -159,14 +159,33 @@ export default function DiscoverPage() {
 
     // Toggle bookmark
     const toggleBookmark = async (id: string, currentState: boolean) => {
-        try {
-            // Optimistic update
-            setDiscoveries((prev) =>
-                prev.map((d) => (d.id === id ? { ...d, isBookmarked: !currentState } : d))
-            )
+        const newState = !currentState
 
-            // TODO: API call to update bookmark
+        // Optimistic update
+        setDiscoveries((prev) =>
+            prev.map((d) => (d.id === id ? { ...d, isBookmarked: newState } : d))
+        )
+
+        try {
+            const res = await fetch("/api/discover", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "bookmark",
+                    discoveryId: id,
+                    isBookmarked: newState,
+                    workspaceId: currentWorkspaceId,
+                }),
+            })
+
+            if (!res.ok) {
+                throw new Error("Failed to update bookmark")
+            }
         } catch (error) {
+            // Rollback on failure
+            setDiscoveries((prev) =>
+                prev.map((d) => (d.id === id ? { ...d, isBookmarked: currentState } : d))
+            )
             console.error("Failed to toggle bookmark:", error)
         }
     }
