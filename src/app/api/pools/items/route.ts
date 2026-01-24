@@ -229,10 +229,75 @@ export async function POST(request: NextRequest) {
             }
 
             case "archive": {
+                const { workspaceId } = data || {}
+
                 await prisma.contentItem.updateMany({
                     where: { id: { in: itemIds } },
                     data: { isArchived: true }
                 })
+
+                // 审计日志
+                if (workspaceId) {
+                    const auditEntries = createBatchItemAuditEntries(
+                        workspaceId,
+                        itemIds,
+                        "ITEM_ARCHIVED",
+                        {},
+                        "owner"
+                    )
+                    await createBatchAuditLogs(auditEntries)
+                }
+
+                return NextResponse.json({ success: true, affected: itemIds.length })
+            }
+
+            case "unarchive": {
+                const { workspaceId } = data || {}
+
+                await prisma.contentItem.updateMany({
+                    where: { id: { in: itemIds } },
+                    data: { isArchived: false }
+                })
+
+                // 审计日志
+                if (workspaceId) {
+                    const auditEntries = createBatchItemAuditEntries(
+                        workspaceId,
+                        itemIds,
+                        "ITEM_UNARCHIVED",
+                        {},
+                        "owner"
+                    )
+                    await createBatchAuditLogs(auditEntries)
+                }
+
+                return NextResponse.json({ success: true, affected: itemIds.length })
+            }
+
+            case "removeTags": {
+                const { tagIds, workspaceId } = data
+                if (!tagIds || !Array.isArray(tagIds)) {
+                    return NextResponse.json({ error: "tagIds required" }, { status: 400 })
+                }
+
+                await prisma.contentItemTag.deleteMany({
+                    where: {
+                        contentItemId: { in: itemIds },
+                        tagId: { in: tagIds },
+                    },
+                })
+
+                // 审计日志
+                if (workspaceId) {
+                    const auditEntries = createBatchItemAuditEntries(
+                        workspaceId,
+                        itemIds,
+                        "ITEM_UNTAGGED",
+                        { tagIds, tagCount: tagIds.length },
+                        "owner"
+                    )
+                    await createBatchAuditLogs(auditEntries)
+                }
 
                 return NextResponse.json({ success: true, affected: itemIds.length })
             }

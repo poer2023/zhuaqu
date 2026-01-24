@@ -96,6 +96,9 @@ enum AuditAction {
   ITEM_MOVED
   ITEM_DELETED
   ITEM_TAGGED
+  ITEM_UNTAGGED
+  ITEM_ARCHIVED
+  ITEM_UNARCHIVED
 }
 
 // ==================== 工作区与素材池 ====================
